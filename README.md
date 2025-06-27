@@ -1,36 +1,238 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# OpenLoveImage 🎨
 
-## Getting Started
+**Free Online Image Converter** - Convert your images between different formats easily and securely in your browser.
 
-First, run the development server:
+[![Next.js](https://img.shields.io/badge/Next.js-15.3.4-black?logo=next.js)](https://nextjs.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)](https://www.typescriptlang.org/)
+[![Material-UI](https://img.shields.io/badge/Material--UI-7.1.2-blue?logo=mui)](https://mui.com/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+## ✨ Features
+
+### 🚀 **Fast & Efficient**
+- Process multiple images in batch with optimized conversion algorithms
+- Real-time conversion progress tracking
+- Instant preview and download
+
+### 🔒 **Privacy First**
+- All conversions happen locally in your browser
+- Your images never leave your device
+- No server uploads or data collection
+
+### 🎛️ **Advanced Options**
+- **Quality Control**: Adjust compression quality (10-100%)
+- **Resize Options**: Set custom width/height with aspect ratio preservation
+- **Compression Levels**: 9 levels of compression optimization
+- **Metadata Removal**: Strip EXIF data for privacy
+
+### 📱 **Format Support**
+- **Input Formats**: HEIC, HEIF, JPEG, JPG, PNG, WebP, GIF, BMP, TIFF, SVG
+- **Output Formats**: JPEG, PNG, WebP
+- **Special Support**: HEIC to JPG conversion using advanced algorithms
+
+### 💾 **Batch Processing**
+- Drag and drop multiple files
+- Batch conversion with progress tracking
+- Download individual files or ZIP archive
+- File size comparison and compression stats
+
+### 🎨 **Modern UI**
+- Material Design 3.0 components
+- Dark mode by default
+- Responsive design for all devices
+- Smooth animations and transitions
+
+## 🛠️ Technology Stack
+
+- **Framework**: [Next.js 15.3.4](https://nextjs.org/) with App Router
+- **Language**: [TypeScript 5.0](https://www.typescriptlang.org/)
+- **UI Library**: [Material-UI 7.1.2](https://mui.com/)
+- **Styling**: [Tailwind CSS 4.0](https://tailwindcss.com/)
+- **Image Processing**: [heic-to](https://www.npmjs.com/package/heic-to) library
+- **File Handling**: [react-dropzone](https://react-dropzone.js.org/)
+- **Archive Creation**: [JSZip](https://stuk.github.io/jszip/)
+- **File Download**: [file-saver](https://github.com/eligrey/FileSaver.js/)
+
+## 🚀 Getting Started
+
+### Prerequisites
+
+- Node.js 18.0 or later
+- npm or yarn package manager
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/ireddragonicy/openloveimage.git
+   cd openloveimage
+   ```
+
+2. **Install dependencies**
+   ```bash
+   npm install
+   # or
+   yarn install
+   ```
+
+3. **Run the development server**
+   ```bash
+   npm run dev
+   # or
+   yarn dev
+   ```
+
+4. **Open your browser**
+   Navigate to [http://localhost:3000](http://localhost:3000)
+
+### Building for Production
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Build the application
+npm run build
+
+# Start production server
+npm run start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 📖 Usage Guide
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Basic Conversion
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Upload Images**: Drag and drop files or click "Choose Files"
+2. **Select Format**: Choose output format (JPEG, PNG, WebP)
+3. **Adjust Settings**: Configure quality, compression, and resize options
+4. **Convert**: Click "Convert All" to process your images
+5. **Download**: Get individual files or download all as ZIP
 
-## Learn More
+### Advanced Features
 
-To learn more about Next.js, take a look at the following resources:
+#### Quality Control
+- **Low (25%)**: Smallest file size, lower quality
+- **Medium (50%)**: Balanced size and quality
+- **High (75%)**: Better quality, larger size
+- **Best (100%)**: Maximum quality, largest size
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+#### Resize Options
+- Set maximum width and/or height in pixels
+- Maintain aspect ratio to prevent distortion
+- Leave empty to keep original dimensions
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+#### Compression Levels
+- **Fast (1-3)**: Quick processing, larger files
+- **Balanced (4-6)**: Good balance of speed and size
+- **Best (7-9)**: Maximum compression, slower processing
 
-## Deploy on Vercel
+## 🔧 Configuration
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Environment Variables
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Create a `.env.local` file in the root directory:
+
+```env
+# Optional: Analytics or other services
+NEXT_PUBLIC_ANALYTICS_ID=your_analytics_id
+```
+
+### Customizing Conversion Settings
+
+Edit `src/app/components/ConversionOptions.tsx` to modify:
+- Default quality settings
+- Available output formats
+- Compression level options
+- Maximum file size limits
+
+## 📁 Project Structure
+
+```
+src/
+├── app/
+│   ├── components/
+│   │   ├── ConversionOptions.tsx    # Settings and options
+│   │   ├── FileProcessor.tsx        # File management and processing
+│   │   ├── Header.tsx              # App header and navigation
+│   │   ├── ImageConverter.tsx      # Main application component
+│   │   ├── ImageUploader.tsx       # Drag & drop file upload
+│   │   └── ThemeProvider.tsx       # Material-UI theme configuration
+│   ├── utils/
+│   │   └── imageConverter.ts       # Core conversion logic
+│   ├── globals.css                 # Global styles
+│   ├── layout.tsx                  # Root layout
+│   └── page.tsx                    # Home page
+├── public/                         # Static assets
+└── ...config files
+```
+
+## 🌟 Key Components
+
+### ImageConverter Class
+Core utility class that handles:
+- HEIC to JPEG/PNG conversion using `heic-to`
+- Regular image format conversion using Canvas API
+- Image resizing and quality adjustment
+- Batch processing with progress tracking
+
+### ConversionOptions Component
+Provides UI for:
+- Output format selection
+- Quality and compression settings
+- Resize options with aspect ratio control
+- Metadata removal toggle
+
+### FileProcessor Component
+Manages:
+- File list display and management
+- Conversion progress tracking
+- Individual and batch downloads
+- Error handling and status display
+
+## 🎯 Browser Support
+
+- **Chrome**: ✅ Full support
+- **Firefox**: ✅ Full support
+- **Safari**: ✅ Full support (including HEIC)
+- **Edge**: ✅ Full support
+
+**Note**: HEIC output format is not supported in browsers due to licensing restrictions.
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development Guidelines
+
+1. **Code Style**: Follow TypeScript and ESLint configurations
+2. **Components**: Use Material-UI components with custom styling
+3. **State Management**: Use React hooks for local state
+4. **Type Safety**: Maintain strict TypeScript typing
+5. **Testing**: Add tests for new features
+
+### Reporting Issues
+
+Please use the [GitHub Issues](https://github.com/ireddragonicy/openloveimage/issues) page to report bugs or request features.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [heic-to](https://github.com/jessicayang24/heic-to) - HEIC conversion library
+- [Material-UI](https://mui.com/) - React UI framework
+- [Next.js](https://nextjs.org/) - React framework
+- [react-dropzone](https://react-dropzone.js.org/) - File upload component
+
+## 📞 Support
+
+- 📧 **Email**: support@openloveimage.com
+- 💬 **Discord**: [Join our community](https://discord.gg/openloveimage)
+- 📚 **Documentation**: [Full docs](https://docs.openloveimage.com)
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/ireddragonicy/openloveimage/issues)
+
+---
+
+**Made with ❤️ for the open source community**
+
+## 🌟 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=ireddragonicy/openloveimage&type=Date)](https://star-history.com/#ireddragonicy/openloveimage&Date)

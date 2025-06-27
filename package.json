@@ -2,6 +2,17 @@
   "name": "openloveimage",
   "version": "0.1.0",
   "private": true,
+  "description": "Modern image converter with before/after preview - Convert HEIC, JPG, PNG, WebP, GIF, BMP, TIFF, SVG with advanced features",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ireddragonicy/openloveimage.git"
+  },
+  "homepage": "https://github.com/ireddragonicy/openloveimage#readme",
+  "bugs": {
+    "url": "https://github.com/ireddragonicy/openloveimage/issues"
+  },
+  "author": "ireddragonicy",
+  "keywords": ["image-converter", "heic", "nextjs", "react", "typescript", "material-ui"],
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
@@ -9,19 +20,30 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/icons-material": "^7.1.2",
+    "@mui/material": "^7.1.2",
+    "@mui/material-nextjs": "^7.1.1",
+    "@mui/system": "^7.1.1",
+    "file-saver": "^2.0.5",
+    "heic-to": "^1.1.14",
+    "jszip": "^3.10.1",
+    "next": "15.3.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "next": "15.3.4"
+    "react-dropzone": "^14.3.8"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@eslint/eslintrc": "^3",
+    "@tailwindcss/postcss": "^4",
+    "@types/file-saver": "^2.0.7",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@tailwindcss/postcss": "^4",
-    "tailwindcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "15.3.4",
-    "@eslint/eslintrc": "^3"
+    "tailwindcss": "^4",
+    "typescript": "^5"
   }
 }
