@@ -69,17 +69,18 @@ function Generate-Changelog {
         $body = if ($parts.Length -gt 2) { $parts[2] } else { "" }
         
         # Categorize based on conventional commits and keywords
-        if ($subject -match '^feat(\(.+\))?!?:' -or $subject -match '^add|^implement') {
-            $features += "- $($subject -replace '^feat(\(.+\))?!?:\s*', '') ($hash)"
+        # Check for breaking changes first (! indicator or BREAKING CHANGE in body)
+        if ($subject -match '!' -or $body -match 'BREAKING CHANGE') {
+            $breaking += "- $($subject -replace '!:', ':') ($hash)"
+        }
+        elseif ($subject -match '^feat(\(.+\))?:' -or $subject -match '^add|^implement') {
+            $features += "- $($subject -replace '^feat(\(.+\))?:\s*', '') ($hash)"
         }
         elseif ($subject -match '^fix(\(.+\))?:' -or $subject -match '^bug|^resolve|^correct') {
             $fixes += "- $($subject -replace '^fix(\(.+\))?:\s*', '') ($hash)"
         }
         elseif ($subject -match '^refactor|^improve|^enhance|^optimize|^update') {
             $improvements += "- $($subject -replace '^(refactor|improve|enhance|optimize|update)(\(.+\))?:?\s*', '') ($hash)"
-        }
-        elseif ($subject -match '!' -or $body -match 'BREAKING CHANGE') {
-            $breaking += "- $subject ($hash)"
         }
         else {
             $other += "- $subject ($hash)"
