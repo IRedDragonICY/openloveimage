@@ -201,6 +201,8 @@ Our release process automatically generates changelogs from commit messages:
 ### 🛠️ Release Scripts
 
 #### Create a Release
+
+**Manual Release Process:**
 ```bash
 # Bump patch version (0.1.0 -> 0.1.1) and build
 ./release.ps1 patch
@@ -213,6 +215,21 @@ Our release process automatically generates changelogs from commit messages:
 
 # Build without version bump
 ./release.ps1 -BuildOnly
+```
+
+**Automated Release Process (Recommended):**
+```bash
+# Full automated release with build, commit, tag, and push
+./auto-release.ps1 patch
+
+# Preview what would happen (dry run)
+./auto-release.ps1 minor -DryRun
+
+# Force release without confirmation prompts
+./auto-release.ps1 major -Force
+
+# Skip build process (version bump and git operations only)
+./auto-release.ps1 patch -SkipBuild
 ```
 
 #### Preview Changelog
@@ -259,9 +276,18 @@ refactor(converter): optimize image processing
 ### 🔄 Auto-Release Process
 1. **Changelog Generation**: Automatically categorizes commits since last release
 2. **Version Bump**: Updates package.json and Tauri config
-3. **Build**: Compiles for all platforms (Windows, Linux, macOS)
+3. **Build**: Compiles for all platforms (Windows, Linux, macOS) 
 4. **Documentation**: Updates CHANGELOG.md with formatted entries
-5. **Release**: Creates tagged release with generated changelog
+5. **Release Notes**: Creates professional release notes file with download links
+6. **Git Operations**: Commits changes, creates annotated tag with changelog
+7. **Release**: Pushes to GitHub with changelog in tag message for auto-release
+
+### 📝 Release Notes & Tag Messages
+Each release automatically generates:
+- **CHANGELOG.md**: Updated with categorized changes
+- **RELEASE_NOTES_v{version}.md**: Professional release notes with download links
+- **Annotated Git Tag**: Contains full changelog as tag message
+- **GitHub Release**: Auto-created from tag with changelog as description
 
 ### 📦 Builds for Multiple Platforms
 - **Windows x64**: MSI installer, NSIS setup, and portable ZIP

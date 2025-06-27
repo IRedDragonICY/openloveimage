@@ -240,17 +240,64 @@ try {
     Write-Host "   • NSIS Setup: src-tauri/target/release/bundle/nsis/OpenLoveImage_${newVersion}_x64-setup.exe" -ForegroundColor White
     
     if (-not $BuildOnly) {
+        # Create release notes file
+        $releaseNotesFile = "RELEASE_NOTES_v$newVersion.md"
+        $releaseContent = @(
+            "# OpenLoveImage v$newVersion",
+            "",
+            "## 📥 Downloads",
+            "",
+            "- **Windows**: [OpenLoveImage_${newVersion}_x64_en-US.msi](https://github.com/ireddragonicy/openloveimage/releases/download/v$newVersion/OpenLoveImage_${newVersion}_x64_en-US.msi)",
+            "- **Windows Setup**: [OpenLoveImage_${newVersion}_x64-setup.exe](https://github.com/ireddragonicy/openloveimage/releases/download/v$newVersion/OpenLoveImage_${newVersion}_x64-setup.exe)",
+            "- **Portable**: [app.exe](https://github.com/ireddragonicy/openloveimage/releases/download/v$newVersion/app.exe)",
+            "",
+            "## 📋 What's Changed",
+            "",
+            $changelogContent,
+            "",
+            "## 🚀 Installation",
+            "",
+            "### Windows",
+            "1. Download the MSI installer or NSIS setup from above",
+            "2. Run the installer and follow the setup wizard",
+            "3. Launch OpenLoveImage from Start Menu or Desktop",
+            "",
+            "### Portable Version",
+            "1. Download `app.exe`",
+            "2. Run directly without installation",
+            "",
+            "## 🐛 Report Issues",
+            "",
+            "Found a bug? Please report it on our [Issues page](https://github.com/ireddragonicy/openloveimage/issues).",
+            "",
+            "**Full Changelog**: https://github.com/ireddragonicy/openloveimage/compare/$(if ($latestTag) { $latestTag } else { 'v0.1.0' })...v$newVersion"
+        ) -join "`n"
+        
+        $releaseContent | Set-Content $releaseNotesFile -Encoding UTF8
+        Write-Host "✅ Created release notes: $releaseNotesFile" -ForegroundColor Green
+        
+        # Prepare tag message with changelog
+        $tagMessage = @(
+            "Release v$newVersion",
+            "",
+            $changelogContent
+        ) -join "`n"
+        
         Write-Host ""
         Write-Host "📋 Release Summary:" -ForegroundColor Cyan
         Write-Host "   Version: $newVersion" -ForegroundColor White
         Write-Host "   Changelog: CHANGELOG.md updated" -ForegroundColor White
+        Write-Host "   Release Notes: $releaseNotesFile created" -ForegroundColor White
         Write-Host ""
         Write-Host "🎯 Next steps:" -ForegroundColor Cyan
         Write-Host "   1. Test the built application" -ForegroundColor White
-        Write-Host "   2. Review CHANGELOG.md" -ForegroundColor White
+        Write-Host "   2. Review CHANGELOG.md and $releaseNotesFile" -ForegroundColor White
         Write-Host "   3. Commit changes: git add . && git commit -m 'chore(release): release v$newVersion'" -ForegroundColor White
-        Write-Host "   4. Create tag: git tag v$newVersion" -ForegroundColor White
+        Write-Host "   4. Create annotated tag with changelog: git tag -a v$newVersion -F $releaseNotesFile" -ForegroundColor White
         Write-Host "   5. Push to trigger auto-release: git push origin main --tags" -ForegroundColor White
+        Write-Host ""
+        Write-Host "🤖 Or use automated release commands:" -ForegroundColor Cyan
+        Write-Host "   git add . && git commit -m 'chore(release): release v$newVersion' && git tag -a v$newVersion -F $releaseNotesFile && git push origin main --tags" -ForegroundColor Yellow
     } else {
         Write-Host ""
         Write-Host "🎯 Build completed for version $newVersion" -ForegroundColor Cyan
