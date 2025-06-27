@@ -1,0 +1,134 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior in OpenLoveImage
+title: "🐛 [Bug]: "
+labels: ["bug", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please provide as much detail as possible to help us resolve the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 📝 Bug Description
+      description: A clear and concise description of the bug
+      placeholder: Describe what happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 🔄 Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Open the application
+        2. Click on '...'
+        3. Upload image '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: ✅ Expected Behavior
+      description: What you expected to happen
+      placeholder: Describe what should have happened...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: ❌ Actual Behavior
+      description: What actually happened
+      placeholder: Describe what actually happened...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: 💻 Operating System
+      description: What operating system are you using?
+      options:
+        - Windows 11
+        - Windows 10
+        - macOS Sonoma (14.x)
+        - macOS Ventura (13.x)
+        - macOS Monterey (12.x)
+        - Ubuntu 22.04
+        - Ubuntu 20.04
+        - Other Linux (specify in additional info)
+        - Other (specify in additional info)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 📱 App Version
+      description: What version of OpenLoveImage are you using?
+      placeholder: "e.g., v1.2.3 or nightly-20241201"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install_method
+    attributes:
+      label: 📦 Installation Method
+      description: How did you install the application?
+      options:
+        - GitHub Release (MSI/DMG/DEB)
+        - GitHub Release (Portable/AppImage)
+        - Built from source
+        - Nightly build
+        - Other (specify in additional info)
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: 📸 Screenshots/Videos
+      description: If applicable, add screenshots or videos to help explain the problem
+      placeholder: Drag and drop images/videos here or paste URLs...
+
+  - type: textarea
+    id: console_logs
+    attributes:
+      label: 📋 Console Logs
+      description: Any error messages or console output (if available)
+      placeholder: Paste console logs here...
+      render: shell
+
+  - type: textarea
+    id: additional_info
+    attributes:
+      label: ℹ️ Additional Information
+      description: Any other context about the problem
+      placeholder: |
+        - File types being converted
+        - File sizes
+        - Special configurations
+        - Antivirus software
+        - etc.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: ✅ Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues to ensure this bug hasn't been reported
+          required: true
+        - label: I am using the latest version of OpenLoveImage
+          required: false
+        - label: I can reproduce this bug consistently
+          required: false
+        - label: I have tried restarting the application
+          required: false 

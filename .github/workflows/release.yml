@@ -1,363 +1,284 @@
-name: 'Release OpenLoveImage Desktop'
+name: 🚀 Auto Release & Multi-Platform Build
 
 on:
   push:
-    branches: [ main ]
-    tags: [ 'v*' ]
-  pull_request:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
 
 jobs:
-  create-release:
-    permissions:
-      contents: write
+  # Job untuk generate version dan changelog
+  prepare-release:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     outputs:
-      release_id: ${{ steps.create-release.outputs.result }}
-
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      should-release: ${{ steps.version.outputs.should-release }}
+      changelog: ${{ steps.changelog.outputs.changelog }}
     steps:
-      - name: Checkout repository
+      - name: 📥 Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Fetch all history for changelog generation
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 'lts/*'
-
-      - name: Setup PowerShell Core
-        uses: actions/setup-powershell@v1
-
-      - name: Get version from tag
+      - name: 📋 Generate version and check if release needed
+        id: version
         run: |
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
-            VERSION=${GITHUB_REF#refs/tags/v}
-            echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_ENV
-            echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          # Get current version from package.json
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          echo "Current version: $CURRENT_VERSION"
+          
+          # Get last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Last tag: $LAST_TAG"
+          
+          # Remove 'v' prefix if exists
+          LAST_VERSION=${LAST_TAG#v}
+          
+          # Compare versions
+          if [ "$CURRENT_VERSION" != "$LAST_VERSION" ]; then
+            NEW_TAG="v$CURRENT_VERSION"
+            echo "New release needed: $NEW_TAG"
+            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+            echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+            echo "should-release=true" >> $GITHUB_OUTPUT
           else
-            VERSION=$(node -p "require('./package.json').version")
-            echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_ENV
-            echo "TAG_NAME=v$VERSION-${GITHUB_SHA:0:7}" >> $GITHUB_ENV
+            # Auto increment patch version
+            IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+            MAJOR=${VERSION_PARTS[0]}
+            MINOR=${VERSION_PARTS[1]}
+            PATCH=${VERSION_PARTS[2]}
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+            NEW_TAG="v$NEW_VERSION"
+            
+            echo "Auto incrementing version to: $NEW_VERSION"
+            echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+            echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+            echo "should-release=true" >> $GITHUB_OUTPUT
+            
+            # Update package.json
+            npm version $NEW_VERSION --no-git-tag-version
+            
+            # Update tauri.conf.json
+            sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" src-tauri/tauri.conf.json
+            
+            # Commit version bump
+            git config --local user.email "action@github.com"
+            git config --local user.name "GitHub Action"
+            git add package.json src-tauri/tauri.conf.json
+            git commit -m "🔖 Bump version to $NEW_VERSION [skip ci]"
+            git push
           fi
 
-      - name: Generate changelog
+      - name: 📝 Generate Changelog
         id: changelog
+        if: steps.version.outputs.should-release == 'true'
         run: |
-          # Install PowerShell if needed and generate changelog
-          if [[ $GITHUB_REF == refs/tags/* ]]; then
-            # For tag pushes, get changelog since previous tag
-            PREVIOUS_TAG=$(git describe --tags --abbrev=0 $TAG_NAME^ 2>/dev/null || echo "")
-            
-            if [ -n "$PREVIOUS_TAG" ]; then
-              echo "Generating changelog since $PREVIOUS_TAG"
-              CHANGELOG=$(git log $PREVIOUS_TAG..$TAG_NAME --pretty=format:"- %s (%h)" --no-merges)
-            else
-              echo "No previous tag found, generating changelog from all commits"
-              CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
-            fi
+          # Get commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$LAST_TAG" ]; then
+            # First release, get all commits
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
           else
-            # For regular pushes, get recent commits
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges -10)
+            # Get commits since last tag
+            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
           fi
           
-          # Format changelog into categories
-          FORMATTED_CHANGELOG=""
-          FEATURES=""
-          FIXES=""
-          IMPROVEMENTS=""
-          BREAKING=""
-          OTHER=""
+          # Generate changelog with modern formatting
+          CHANGELOG="## 🎉 What's New in v${{ steps.version.outputs.version }}
+
+          ### ✨ Features & Improvements
+          $COMMITS
+
+          ### 🔧 Technical Details
+          - **Platform Support**: Windows, macOS, Linux
+          - **Architecture**: x64, Universal (macOS)
+          - **Built with**: Tauri v2, Next.js 15, React 19
+          - **Security**: All processing done locally, no data leaves your device
+
+          ### 📦 Download Options
+          Choose the appropriate file for your operating system:
+          - **Windows**: \`.msi\` (installer) or \`.exe\` (portable)
+          - **macOS**: \`.dmg\` (Universal - Intel & Apple Silicon)
+          - **Linux**: \`.AppImage\` (portable) or \`.deb\` (Ubuntu/Debian)
+
+          ### 🚀 Installation
+          1. Download the appropriate file for your OS
+          2. Run the installer or extract the portable version
+          3. Enjoy converting your images with privacy and speed!
+
+          ---
+          *Built with ❤️ using Tauri & Next.js*"
           
-          while IFS= read -r line; do
-            if [[ $line == *"!"* ]] || [[ $line == *"BREAKING CHANGE"* ]]; then
-              BREAKING="$BREAKING$line"$'\n'
-            elif [[ $line == *"feat"* ]] || [[ $line == *"add"* ]] || [[ $line == *"implement"* ]]; then
-              FEATURES="$FEATURES$line"$'\n'
-            elif [[ $line == *"fix"* ]] || [[ $line == *"bug"* ]] || [[ $line == *"resolve"* ]]; then
-              FIXES="$FIXES$line"$'\n'
-            elif [[ $line == *"refactor"* ]] || [[ $line == *"improve"* ]] || [[ $line == *"enhance"* ]] || [[ $line == *"optimize"* ]]; then
-              IMPROVEMENTS="$IMPROVEMENTS$line"$'\n'
-            else
-              OTHER="$OTHER$line"$'\n'
-            fi
-          done <<< "$CHANGELOG"
-          
-          # Build formatted changelog
-          if [ -n "$BREAKING" ]; then
-            FORMATTED_CHANGELOG="$FORMATTED_CHANGELOG### 🚨 Breaking Changes"$'\n'"$BREAKING"$'\n'
-          fi
-          if [ -n "$FEATURES" ]; then
-            FORMATTED_CHANGELOG="$FORMATTED_CHANGELOG### ✨ New Features"$'\n'"$FEATURES"$'\n'
-          fi
-          if [ -n "$FIXES" ]; then
-            FORMATTED_CHANGELOG="$FORMATTED_CHANGELOG### 🐛 Bug Fixes"$'\n'"$FIXES"$'\n'
-          fi
-          if [ -n "$IMPROVEMENTS" ]; then
-            FORMATTED_CHANGELOG="$FORMATTED_CHANGELOG### 🔧 Improvements"$'\n'"$IMPROVEMENTS"$'\n'
-          fi
-          if [ -n "$OTHER" ]; then
-            FORMATTED_CHANGELOG="$FORMATTED_CHANGELOG### 📦 Other Changes"$'\n'"$OTHER"$'\n'
-          fi
-          
-          # Save changelog to file and environment
-          echo "$FORMATTED_CHANGELOG" > changelog.md
-          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
-          echo "$FORMATTED_CHANGELOG" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
+          # Escape newlines for GitHub output
+          CHANGELOG="${CHANGELOG//'%'/'%25'}"
+          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
+          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
+          echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
 
-      - name: Create release
-        id: create-release
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const changelog = process.env.CHANGELOG;
-            
-            const { data } = await github.rest.repos.createRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              tag_name: process.env.TAG_NAME,
-              name: `OpenLoveImage Desktop v${process.env.PACKAGE_VERSION}`,
-              body: `# OpenLoveImage v${process.env.PACKAGE_VERSION}
-
-## 📥 Downloads
-
-- **Windows**: [OpenLoveImage_${process.env.PACKAGE_VERSION}_x64_en-US.msi](https://github.com/ireddragonicy/openloveimage/releases/download/${process.env.TAG_NAME}/OpenLoveImage_${process.env.PACKAGE_VERSION}_x64_en-US.msi)
-- **Windows Setup**: [OpenLoveImage_${process.env.PACKAGE_VERSION}_x64-setup.exe](https://github.com/ireddragonicy/openloveimage/releases/download/${process.env.TAG_NAME}/OpenLoveImage_${process.env.PACKAGE_VERSION}_x64-setup.exe)
-- **Linux AppImage**: [openloveimage_${process.env.PACKAGE_VERSION}_amd64.AppImage](https://github.com/ireddragonicy/openloveimage/releases/download/${process.env.TAG_NAME}/openloveimage_${process.env.PACKAGE_VERSION}_amd64.AppImage)
-- **Linux DEB**: [openloveimage_${process.env.PACKAGE_VERSION}_amd64.deb](https://github.com/ireddragonicy/openloveimage/releases/download/${process.env.TAG_NAME}/openloveimage_${process.env.PACKAGE_VERSION}_amd64.deb)
-- **macOS**: [OpenLoveImage_${process.env.PACKAGE_VERSION}_universal.dmg](https://github.com/ireddragonicy/openloveimage/releases/download/${process.env.TAG_NAME}/OpenLoveImage_${process.env.PACKAGE_VERSION}_universal.dmg)
-
-## 📋 What's Changed
-
-${changelog}
-
-## 🚀 Installation
-
-### Windows
-1. Download the MSI installer or NSIS setup from above
-2. Run the installer and follow the setup wizard
-3. Launch OpenLoveImage from Start Menu or Desktop
-
-### Linux
-1. **AppImage**: Download, make executable (\`chmod +x\`), and run
-2. **DEB Package**: Install with \`sudo dpkg -i package.deb\`
-
-### macOS
-1. Download the DMG file
-2. Open and drag to Applications folder
-3. Launch from Applications
-
-### Portable Versions
-- Download the portable ZIP files for no-installation usage
-- Extract and run the executable directly
-
-## ✨ Features
-
-- 🖼️ **Multiple Formats**: Convert HEIC, JPG, PNG, WebP, GIF, BMP, TIFF, SVG
-- 🎛️ **Advanced Options**: Quality settings, compression levels, resize options
-- 📁 **Batch Processing**: Drag & drop multiple files
-- 🔒 **Privacy First**: All processing happens locally, no cloud uploads
-- ⚡ **Native Performance**: Faster than browser-based solutions
-- 🎨 **Modern UI**: Beautiful Material Design interface
-- 🔄 **Before/After Preview**: Compare original vs converted images
-
-## 🐛 Report Issues
-
-Found a bug? Please report it on our [Issues page](https://github.com/ireddragonicy/openloveimage/issues).
-
-**Built from commit**: ${context.sha}`,
-              draft: false,
-              prerelease: false
-            })
-            return data.id
-
-  build-tauri:
-    needs: create-release
-    permissions:
-      contents: write
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'macos-latest'
-            args: '--target aarch64-apple-darwin'
-            target: 'aarch64-apple-darwin'
-            arch: 'arm64'
-          - platform: 'macos-latest'
-            args: '--target x86_64-apple-darwin'
-            target: 'x86_64-apple-darwin'
-            arch: 'x64'
-          - platform: 'ubuntu-22.04'
-            args: ''
-            target: 'x86_64-unknown-linux-gnu'
-            arch: 'x64'
-          - platform: 'windows-latest'
-            args: ''
-            target: 'x86_64-pc-windows-msvc'
-            arch: 'x64'
-
-    runs-on: ${{ matrix.platform }}
+  # Build untuk Windows
+  build-windows:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should-release == 'true'
+    runs-on: windows-latest
     steps:
-      - name: Checkout repository
+      - name: 📥 Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies (Ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev librsvg2-dev patchelf libgtk-3-dev
-          # Install appindicator - try new version first, fallback to old
-          sudo apt-get install -y libayatana-appindicator3-dev || sudo apt-get install -y libappindicator3-dev
-
-      - name: Rust setup
+      - name: 🦀 Setup Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: './src-tauri -> target'
-
-      - name: Sync node version and setup cache
+      - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
+          node-version: '20'
           cache: 'npm'
 
-      - name: Install frontend dependencies
+      - name: 🔧 Install dependencies
         run: npm ci
 
-      - name: Build the app
-        uses: tauri-apps/tauri-action@v0
+      - name: 🏗️ Build Tauri app for Windows
+        run: npm run tauri build -- --target x86_64-pc-windows-msvc
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📤 Upload Windows artifacts
+        uses: actions/upload-artifact@v4
         with:
-          releaseId: ${{ needs.create-release.outputs.release_id }}
-          args: ${{ matrix.args }}
+          name: windows-x64
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
 
-  create-portable-versions:
-    needs: [create-release, build-tauri]
-    permissions:
-      contents: write
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: 'ubuntu-22.04'
-            os: 'linux'
-            ext: ''
-          - platform: 'windows-latest'
-            os: 'windows'
-            ext: '.exe'
-
-    runs-on: ${{ matrix.platform }}
+  # Build untuk macOS
+  build-macos:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should-release == 'true'
+    runs-on: macos-latest
     steps:
-      - name: Checkout repository
+      - name: 📥 Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies (Ubuntu only)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev librsvg2-dev patchelf libgtk-3-dev
-          # Install appindicator - try new version first, fallback to old
-          sudo apt-get install -y libayatana-appindicator3-dev || sudo apt-get install -y libappindicator3-dev
-
-      - name: Rust setup
+      - name: 🦀 Setup Rust
         uses: dtolnay/rust-toolchain@stable
-
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> target'
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
 
-      - name: Sync node version and setup cache
+      - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
+          node-version: '20'
           cache: 'npm'
 
-      - name: Install frontend dependencies
+      - name: 🔧 Install dependencies
         run: npm ci
 
-      - name: Build frontend
-        run: npm run build
+      - name: 🏗️ Build Tauri app for macOS (Universal)
+        run: npm run tauri build -- --target universal-apple-darwin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Tauri app
-        run: npm run tauri:build
-
-      - name: Get version
-        run: echo "PACKAGE_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
-        shell: bash
-
-      - name: Create portable ZIP (Windows)
-        if: matrix.platform == 'windows-latest'
-        run: |
-          mkdir portable-windows
-          copy "src-tauri\target\release\app.exe" "portable-windows\OpenLoveImage.exe"
-          echo "# OpenLoveImage Portable" > portable-windows\README.txt
-          echo "## How to use:" >> portable-windows\README.txt
-          echo "1. Double-click OpenLoveImage.exe to run" >> portable-windows\README.txt
-          echo "2. No installation required!" >> portable-windows\README.txt
-          echo "3. Drag and drop images to convert" >> portable-windows\README.txt
-          echo "" >> portable-windows\README.txt
-          echo "Version: $env:PACKAGE_VERSION" >> portable-windows\README.txt
-          echo "Platform: Windows x64 Portable" >> portable-windows\README.txt
-          powershell Compress-Archive -Path "portable-windows\*" -DestinationPath "OpenLoveImage-$env:PACKAGE_VERSION-windows-x64-portable.zip"
-
-      - name: Create portable ZIP (Linux)
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          mkdir portable-linux
-          cp src-tauri/target/release/app portable-linux/OpenLoveImage
-          chmod +x portable-linux/OpenLoveImage
-          cat > portable-linux/README.txt << EOF
-          # OpenLoveImage Portable
-          ## How to use:
-          1. Make sure the file is executable: chmod +x OpenLoveImage
-          2. Run: ./OpenLoveImage
-          3. No installation required!
-          4. Drag and drop images to convert
-          
-          Version: $PACKAGE_VERSION
-          Platform: Linux x64 Portable
-          EOF
-          cat > portable-linux/install.sh << EOF
-          #!/bin/bash
-          echo "Setting up OpenLoveImage..."
-          chmod +x OpenLoveImage
-          echo "Done! You can now run: ./OpenLoveImage"
-          EOF
-          chmod +x portable-linux/install.sh
-          zip -r "OpenLoveImage-$PACKAGE_VERSION-linux-x64-portable.zip" portable-linux/
-
-      - name: Upload portable ZIP to release
-        uses: actions/github-script@v7
+      - name: 📤 Upload macOS artifacts
+        uses: actions/upload-artifact@v4
         with:
-          script: |
-            const fs = require('fs');
-            const path = require('path');
-            
-            const platform = '${{ matrix.os }}';
-            const version = process.env.PACKAGE_VERSION;
-            const filename = `OpenLoveImage-${version}-${platform}-x64-portable.zip`;
-            
-            if (fs.existsSync(filename)) {
-              await github.rest.repos.uploadReleaseAsset({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                release_id: '${{ needs.create-release.outputs.release_id }}',
-                name: filename,
-                data: fs.readFileSync(filename)
-              });
-            } 
+          name: macos-universal
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app
+
+  # Build untuk Linux
+  build-linux:
+    needs: prepare-release
+    if: needs.prepare-release.outputs.should-release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🦀 Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 🔧 Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev
+
+      - name: 🔧 Install dependencies
+        run: npm ci
+
+      - name: 🏗️ Build Tauri app for Linux
+        run: npm run tauri build -- --target x86_64-unknown-linux-gnu
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📤 Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: |
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
+            src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+
+  # Create Release
+  create-release:
+    needs: [prepare-release, build-windows, build-macos, build-linux]
+    if: needs.prepare-release.outputs.should-release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📥 Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: ./artifacts
+
+      - name: 🏷️ Create Git Tag
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag ${{ needs.prepare-release.outputs.tag }}
+          git push origin ${{ needs.prepare-release.outputs.tag }}
+
+      - name: 🎉 Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare-release.outputs.tag }}
+          name: "OpenLoveImage v${{ needs.prepare-release.outputs.version }} 🎨"
+          body: ${{ needs.prepare-release.outputs.changelog }}
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/**/*
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🎊 Success Notification
+        run: |
+          echo "🎉 Release v${{ needs.prepare-release.outputs.version }} created successfully!"
+          echo "📦 Artifacts uploaded for Windows, macOS, and Linux"
+          echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ needs.prepare-release.outputs.tag }}" 

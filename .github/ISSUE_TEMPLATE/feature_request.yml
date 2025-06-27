@@ -1,0 +1,29 @@
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement for OpenLoveImage
+title: "✨ [Feature]: "
+labels: ["enhancement", "needs-review"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a new feature! We appreciate your ideas to make OpenLoveImage better.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 🎯 Problem Statement
+      description: What problem does this feature solve? What's your use case?
+      placeholder: "I'm frustrated when... / I need to... / It would be helpful if..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 💡 Proposed Solution
+      description: Describe the feature you'd like to see implemented
+      placeholder: I would like...
+    validations:
+      required: true 

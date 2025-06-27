@@ -25,13 +25,25 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "lint:fix": "next lint --fix",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:build:debug": "tauri build --debug",
     "release:windows": "tauri build --target x86_64-pc-windows-msvc",
     "release:linux": "tauri build --target x86_64-unknown-linux-gnu",
-    "release:macos": "tauri build --target universal-apple-darwin"
+    "release:macos": "tauri build --target universal-apple-darwin",
+    "release:all": "npm run release:windows && npm run release:linux && npm run release:macos",
+    "version:patch": "npm version patch --no-git-tag-version && npm run version:sync",
+    "version:minor": "npm version minor --no-git-tag-version && npm run version:sync",
+    "version:major": "npm version major --no-git-tag-version && npm run version:sync",
+    "version:sync": "node scripts/sync-version.js",
+    "changelog": "node scripts/generate-changelog.js",
+    "clean": "rimraf out .next src-tauri/target node_modules/.cache",
+    "clean:all": "npm run clean && rimraf node_modules",
+    "check": "npm run lint && npm run build",
+    "prepare:release": "npm run check && npm run changelog",
+    "dev:clean": "npm run clean && npm run dev"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -60,6 +72,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.3.4",
+    "rimraf": "^6.0.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
