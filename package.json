@@ -1,6 +1,6 @@
 {
   "name": "openloveimage",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Modern image converter with before/after preview - Convert HEIC, JPG, PNG, WebP, GIF, BMP, TIFF, SVG with advanced features",
   "repository": {

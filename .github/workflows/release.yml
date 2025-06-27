@@ -91,7 +91,8 @@ jobs:
           fi
           
           # Generate changelog with modern formatting
-          CHANGELOG="## 🎉 What's New in v${{ steps.version.outputs.version }}
+          cat > changelog_temp.md << 'EOL'
+          ## 🎉 What's New in v${{ steps.version.outputs.version }}
 
           ### ✨ Features & Improvements
           $COMMITS
@@ -104,23 +105,47 @@ jobs:
 
           ### 📦 Download Options
           Choose the appropriate file for your operating system:
-          - **Windows**: \`.msi\` (installer) or \`.exe\` (portable)
-          - **macOS**: \`.dmg\` (Universal - Intel & Apple Silicon)
-          - **Linux**: \`.AppImage\` (portable) or \`.deb\` (Ubuntu/Debian)
+          
+          #### Windows
+          - **`.msi`** - Windows Installer (recommended for most users)
+          - **`.exe`** - NSIS Setup Executable  
+          - **`.zip`** - Portable ZIP (no installation required)
+          
+          #### macOS
+          - **`.dmg`** - Universal DMG (Intel & Apple Silicon)
+          
+          #### Linux
+          - **`.AppImage`** - Portable Application Image
+          - **`.deb`** - Debian/Ubuntu Package
+          - **`.zip`** - Portable ZIP (extract and run)
 
-          ### 🚀 Installation
-          1. Download the appropriate file for your OS
-          2. Run the installer or extract the portable version
-          3. Enjoy converting your images with privacy and speed!
+          ### 🚀 Installation Instructions
+
+          **Windows:**
+          1. **Installer**: Download `.msi` file and run installer
+          2. **Portable**: Download `.zip`, extract, and run `OpenLoveImage.exe`
+
+          **macOS:**
+          1. Download `.dmg` file
+          2. Open DMG and drag app to Applications folder
+
+          **Linux:**
+          1. **AppImage**: Download, make executable (`chmod +x`), and run
+          2. **DEB**: Install with `sudo dpkg -i package.deb`
+          3. **Portable**: Download `.zip`, extract, and run executable
 
           ---
-          *Built with ❤️ using Tauri & Next.js*"
+          *Built with ❤️ using Tauri & Next.js*
+          EOL
           
-          # Escape newlines for GitHub output
-          CHANGELOG="${CHANGELOG//'%'/'%25'}"
-          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
-          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
-          echo "changelog=$CHANGELOG" >> $GITHUB_OUTPUT
+          # Use heredoc for multiline output without escaping issues
+          {
+            echo 'changelog<<EOF'
+            cat changelog_temp.md
+            echo 'EOF'
+          } >> $GITHUB_OUTPUT
+          
+          rm changelog_temp.md
 
   # Build untuk Windows
   build-windows:
@@ -241,9 +266,198 @@ jobs:
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/appimage/*.AppImage
             src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
 
+  # Create Portable ZIP files
+  create-portable:
+    needs: [prepare-release, build-windows, build-macos, build-linux]
+    if: needs.prepare-release.outputs.should-release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 📥 Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: ./build-artifacts
+
+      - name: 📦 Create Portable ZIP for Windows
+        run: |
+          VERSION="${{ needs.prepare-release.outputs.version }}"
+          
+          # Create Windows portable directory
+          mkdir -p windows-portable
+          
+          # Find and copy Windows executable
+          find build-artifacts -name "*.exe" -not -path "*/bundle/nsis/*" -exec cp {} windows-portable/OpenLoveImage.exe \; || true
+          
+          # If no standalone exe, extract from NSIS installer (fallback)
+          if [ ! -f "windows-portable/OpenLoveImage.exe" ]; then
+            find build-artifacts -name "*.exe" -path "*/bundle/nsis/*" -exec cp {} windows-portable/OpenLoveImage-Setup.exe \;
+            echo "Note: This is a setup executable, not a portable version" > windows-portable/README.txt
+          fi
+          
+          # Add README for portable version
+          cat > windows-portable/README.md << EOF
+          # OpenLoveImage Portable v${VERSION}
+          
+          ## How to Use
+          1. Double-click \`OpenLoveImage.exe\` to run the application
+          2. No installation required - runs directly
+          3. All your settings are saved in the same folder
+          
+          ## Features
+          - Convert images between formats (HEIC, JPG, PNG, WebP, etc.)
+          - Batch processing support
+          - Before/after preview
+          - Privacy-focused (all processing done locally)
+          
+          ## System Requirements
+          - Windows 10 or later
+          - 64-bit architecture
+          
+          ## Support
+          - GitHub: https://github.com/ireddragonicy/openloveimage
+          - Issues: https://github.com/ireddragonicy/openloveimage/issues
+          EOF
+          
+          # Create ZIP
+          cd windows-portable
+          zip -r "../OpenLoveImage-v${VERSION}-Windows-x64-Portable.zip" .
+          cd ..
+
+      - name: 📦 Create Portable ZIP for Linux
+        run: |
+          VERSION="${{ needs.prepare-release.outputs.version }}"
+          
+          # Create Linux portable directory
+          mkdir -p linux-portable
+          
+          # Find and copy Linux executable (from target directory, not bundle)
+          find build-artifacts -path "*/target/*/release/openloveimage" -exec cp {} linux-portable/OpenLoveImage \; 2>/dev/null || true
+          find build-artifacts -path "*/target/*/release/app" -exec cp {} linux-portable/OpenLoveImage \; 2>/dev/null || true
+          
+          # Make executable
+          chmod +x linux-portable/OpenLoveImage 2>/dev/null || true
+          
+          # Add launch script
+          cat > linux-portable/run.sh << 'EOF'
+          #!/bin/bash
+          # OpenLoveImage Launcher
+          
+          SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          cd "$SCRIPT_DIR"
+          
+          # Make sure the executable has the right permissions
+          chmod +x OpenLoveImage
+          
+          # Launch the application
+          ./OpenLoveImage "$@"
+          EOF
+          
+          chmod +x linux-portable/run.sh
+          
+          # Add README for portable version
+          cat > linux-portable/README.md << EOF
+          # OpenLoveImage Portable v${VERSION}
+          
+          ## How to Use
+          
+          ### Quick Start
+          \`\`\`bash
+          chmod +x run.sh
+          ./run.sh
+          \`\`\`
+          
+          ### Direct Launch
+          \`\`\`bash
+          chmod +x OpenLoveImage
+          ./OpenLoveImage
+          \`\`\`
+          
+          ## Features
+          - Convert images between formats (HEIC, JPG, PNG, WebP, etc.)
+          - Batch processing support
+          - Before/after preview
+          - Privacy-focused (all processing done locally)
+          
+          ## System Requirements
+          - Linux 64-bit
+          - GTK 3.0+ libraries
+          - WebKit2GTK
+          
+          ## Dependencies (Ubuntu/Debian)
+          \`\`\`bash
+          sudo apt update
+          sudo apt install libwebkit2gtk-4.1-dev libgtk-3-0
+          \`\`\`
+          
+          ## Support
+          - GitHub: https://github.com/ireddragonicy/openloveimage
+          - Issues: https://github.com/ireddragonicy/openloveimage/issues
+          EOF
+          
+          # Create ZIP
+          cd linux-portable
+          zip -r "../OpenLoveImage-v${VERSION}-Linux-x64-Portable.zip" .
+          cd ..
+
+      - name: 📦 Create Portable ZIP for macOS
+        run: |
+          VERSION="${{ needs.prepare-release.outputs.version }}"
+          
+          # Create macOS portable directory
+          mkdir -p macos-portable
+          
+          # Find and copy macOS app bundle
+          find build-artifacts -name "*.app" -exec cp -r {} macos-portable/ \; 2>/dev/null || true
+          
+          # Add README for portable version
+          cat > macos-portable/README.md << EOF
+          # OpenLoveImage Portable v${VERSION}
+          
+          ## How to Use
+          1. Double-click the \`.app\` file to run
+          2. If prompted about security, go to System Preferences > Security & Privacy
+          3. Click "Open Anyway" to allow the app to run
+          
+          ## Installation (Optional)
+          - Drag the \`.app\` file to your Applications folder
+          - Or run directly from this location
+          
+          ## Features
+          - Convert images between formats (HEIC, JPG, PNG, WebP, etc.)
+          - Batch processing support
+          - Before/after preview
+          - Privacy-focused (all processing done locally)
+          - Universal binary (Intel + Apple Silicon)
+          
+          ## System Requirements
+          - macOS 10.15 (Catalina) or later
+          - Intel or Apple Silicon Mac
+          
+          ## Support
+          - GitHub: https://github.com/ireddragonicy/openloveimage
+          - Issues: https://github.com/ireddragonicy/openloveimage/issues
+          EOF
+          
+          # Create ZIP
+          cd macos-portable
+          zip -r "../OpenLoveImage-v${VERSION}-macOS-Universal-Portable.zip" .
+          cd ..
+
+      - name: 📤 Upload Portable ZIP artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable-releases
+          path: |
+            OpenLoveImage-v${{ needs.prepare-release.outputs.version }}-Windows-x64-Portable.zip
+            OpenLoveImage-v${{ needs.prepare-release.outputs.version }}-Linux-x64-Portable.zip
+            OpenLoveImage-v${{ needs.prepare-release.outputs.version }}-macOS-Universal-Portable.zip
+
   # Create Release
   create-release:
-    needs: [prepare-release, build-windows, build-macos, build-linux]
+    needs: [prepare-release, build-windows, build-macos, build-linux, create-portable]
     if: needs.prepare-release.outputs.should-release == 'true'
     runs-on: ubuntu-latest
     steps:
