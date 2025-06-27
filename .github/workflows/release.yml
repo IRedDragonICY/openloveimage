@@ -23,42 +23,156 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history for changelog generation
 
-      - name: Get version
-        run: echo "PACKAGE_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+
+      - name: Setup PowerShell Core
+        uses: actions/setup-powershell@v1
+
+      - name: Get version from tag
+        run: |
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+            echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_ENV
+            echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          else
+            VERSION=$(node -p "require('./package.json').version")
+            echo "PACKAGE_VERSION=$VERSION" >> $GITHUB_ENV
+            echo "TAG_NAME=v$VERSION-${GITHUB_SHA:0:7}" >> $GITHUB_ENV
+          fi
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Install PowerShell if needed and generate changelog
+          if [[ $GITHUB_REF == refs/tags/* ]]; then
+            # For tag pushes, get changelog since previous tag
+            PREVIOUS_TAG=$(git describe --tags --abbrev=0 $TAG_NAME^ 2>/dev/null || echo "")
+            
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo "Generating changelog since $PREVIOUS_TAG"
+              CHANGELOG=$(git log $PREVIOUS_TAG..$TAG_NAME --pretty=format:"- %s (%h)" --no-merges)
+            else
+              echo "No previous tag found, generating changelog from all commits"
+              CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+            fi
+          else
+            # For regular pushes, get recent commits
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges -10)
+          fi
+          
+          # Format changelog into categories
+          FORMATTED_CHANGELOG=""
+          FEATURES=""
+          FIXES=""
+          IMPROVEMENTS=""
+          BREAKING=""
+          OTHER=""
+          
+          while IFS= read -r line; do
+            if [[ $line == *"!"* ]] || [[ $line == *"BREAKING CHANGE"* ]]; then
+              BREAKING="$BREAKING$line"$'\n'
+            elif [[ $line == *"feat"* ]] || [[ $line == *"add"* ]] || [[ $line == *"implement"* ]]; then
+              FEATURES="$FEATURES$line"$'\n'
+            elif [[ $line == *"fix"* ]] || [[ $line == *"bug"* ]] || [[ $line == *"resolve"* ]]; then
+              FIXES="$FIXES$line"$'\n'
+            elif [[ $line == *"refactor"* ]] || [[ $line == *"improve"* ]] || [[ $line == *"enhance"* ]] || [[ $line == *"optimize"* ]]; then
+              IMPROVEMENTS="$IMPROVEMENTS$line"$'\n'
+            else
+              OTHER="$OTHER$line"$'\n'
+            fi
+          done <<< "$CHANGELOG"
+          
+          # Build formatted changelog
+          if [ -n "$BREAKING" ]; then
+            FORMATTED_CHANGELOG="$FORMATTED_CHANGELOG### 🚨 Breaking Changes"$'\n'"$BREAKING"$'\n'
+          fi
+          if [ -n "$FEATURES" ]; then
+            FORMATTED_CHANGELOG="$FORMATTED_CHANGELOG### ✨ New Features"$'\n'"$FEATURES"$'\n'
+          fi
+          if [ -n "$FIXES" ]; then
+            FORMATTED_CHANGELOG="$FORMATTED_CHANGELOG### 🐛 Bug Fixes"$'\n'"$FIXES"$'\n'
+          fi
+          if [ -n "$IMPROVEMENTS" ]; then
+            FORMATTED_CHANGELOG="$FORMATTED_CHANGELOG### 🔧 Improvements"$'\n'"$IMPROVEMENTS"$'\n'
+          fi
+          if [ -n "$OTHER" ]; then
+            FORMATTED_CHANGELOG="$FORMATTED_CHANGELOG### 📦 Other Changes"$'\n'"$OTHER"$'\n'
+          fi
+          
+          # Save changelog to file and environment
+          echo "$FORMATTED_CHANGELOG" > changelog.md
+          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+          echo "$FORMATTED_CHANGELOG" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Create release
         id: create-release
         uses: actions/github-script@v7
         with:
           script: |
+            const fs = require('fs');
+            const changelog = process.env.CHANGELOG;
+            
             const { data } = await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              tag_name: `v${process.env.PACKAGE_VERSION}-${context.sha.substring(0, 7)}`,
+              tag_name: process.env.TAG_NAME,
               name: `OpenLoveImage Desktop v${process.env.PACKAGE_VERSION}`,
-              body: `
-            ## 🎉 OpenLoveImage Desktop Release
-            
-            ### 📦 Downloads
-            - **Windows**: Download the \`.msi\` or \`.exe\` installer
-            - **Linux**: Download the \`.AppImage\` or \`.deb\` package
-            - **Portable**: Download the ZIP files for portable versions
-            
-            ### ✨ Features
-            - 🖼️ Convert HEIC, JPG, PNG, WebP, GIF, BMP, TIFF, SVG
-            - 🎛️ Advanced conversion options and quality settings
-            - 📁 Batch processing with drag & drop
-            - 🔒 Privacy-first: All processing happens locally
-            - ⚡ Native desktop performance
-            
-            ### 🔧 Installation
-            - **Windows**: Run the installer (\`.msi\` or \`.exe\`)
-            - **Linux**: Install the \`.deb\` package or use \`.AppImage\`
-            - **Portable**: Extract ZIP and run the executable
-            
-            Built from commit: ${context.sha}
-              `,
+              body: `# OpenLoveImage v${process.env.PACKAGE_VERSION}
+
+## 📥 Downloads
+
+- **Windows**: [OpenLoveImage_${process.env.PACKAGE_VERSION}_x64_en-US.msi](https://github.com/ireddragonicy/openloveimage/releases/download/${process.env.TAG_NAME}/OpenLoveImage_${process.env.PACKAGE_VERSION}_x64_en-US.msi)
+- **Windows Setup**: [OpenLoveImage_${process.env.PACKAGE_VERSION}_x64-setup.exe](https://github.com/ireddragonicy/openloveimage/releases/download/${process.env.TAG_NAME}/OpenLoveImage_${process.env.PACKAGE_VERSION}_x64-setup.exe)
+- **Linux AppImage**: [openloveimage_${process.env.PACKAGE_VERSION}_amd64.AppImage](https://github.com/ireddragonicy/openloveimage/releases/download/${process.env.TAG_NAME}/openloveimage_${process.env.PACKAGE_VERSION}_amd64.AppImage)
+- **Linux DEB**: [openloveimage_${process.env.PACKAGE_VERSION}_amd64.deb](https://github.com/ireddragonicy/openloveimage/releases/download/${process.env.TAG_NAME}/openloveimage_${process.env.PACKAGE_VERSION}_amd64.deb)
+- **macOS**: [OpenLoveImage_${process.env.PACKAGE_VERSION}_universal.dmg](https://github.com/ireddragonicy/openloveimage/releases/download/${process.env.TAG_NAME}/OpenLoveImage_${process.env.PACKAGE_VERSION}_universal.dmg)
+
+## 📋 What's Changed
+
+${changelog}
+
+## 🚀 Installation
+
+### Windows
+1. Download the MSI installer or NSIS setup from above
+2. Run the installer and follow the setup wizard
+3. Launch OpenLoveImage from Start Menu or Desktop
+
+### Linux
+1. **AppImage**: Download, make executable (\`chmod +x\`), and run
+2. **DEB Package**: Install with \`sudo dpkg -i package.deb\`
+
+### macOS
+1. Download the DMG file
+2. Open and drag to Applications folder
+3. Launch from Applications
+
+### Portable Versions
+- Download the portable ZIP files for no-installation usage
+- Extract and run the executable directly
+
+## ✨ Features
+
+- 🖼️ **Multiple Formats**: Convert HEIC, JPG, PNG, WebP, GIF, BMP, TIFF, SVG
+- 🎛️ **Advanced Options**: Quality settings, compression levels, resize options
+- 📁 **Batch Processing**: Drag & drop multiple files
+- 🔒 **Privacy First**: All processing happens locally, no cloud uploads
+- ⚡ **Native Performance**: Faster than browser-based solutions
+- 🎨 **Modern UI**: Beautiful Material Design interface
+- 🔄 **Before/After Preview**: Compare original vs converted images
+
+## 🐛 Report Issues
+
+Found a bug? Please report it on our [Issues page](https://github.com/ireddragonicy/openloveimage/issues).
+
+**Built from commit**: ${context.sha}`,
               draft: false,
               prerelease: false
             })
@@ -246,96 +360,4 @@ jobs:
                 name: filename,
                 data: fs.readFileSync(filename)
               });
-            }
-
-  update-release:
-    needs: [create-release, build-tauri, create-portable-versions]
-    permissions:
-      contents: write
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Get version
-        run: echo "PACKAGE_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
-
-      - name: Update release with final information
-        uses: actions/github-script@v7
-        with:
-          script: |
-            await github.rest.repos.updateRelease({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              release_id: '${{ needs.create-release.outputs.release_id }}',
-              body: `
-            ## 🎉 OpenLoveImage Desktop v${process.env.PACKAGE_VERSION}
-            
-            **Modern image converter with before/after preview - Now available as a native desktop application!**
-            
-            ### 📦 Download Options
-            
-            #### Windows (Recommended)
-            - **🔧 MSI Installer** - Professional Windows installer with uninstaller
-            - **⚡ NSIS Setup** - Lightweight setup executable
-            - **📁 Portable ZIP** - No installation required, extract and run
-            
-            #### Linux (Multiple Formats)
-            - **🖥️ AppImage** - Universal Linux application (recommended)
-            - **📦 DEB Package** - For Debian/Ubuntu systems
-            - **📁 Portable ZIP** - No installation required, extract and run
-            
-            #### macOS
-            - **🍎 DMG Package** - Standard macOS application installer
-            
-            ### ✨ Features
-            - **🖼️ Multiple Formats**: Convert HEIC, JPG, PNG, WebP, GIF, BMP, TIFF, SVG
-            - **🎛️ Advanced Options**: Quality settings, compression levels, resize options
-            - **📁 Batch Processing**: Drag & drop multiple files
-            - **🔒 Privacy First**: All processing happens locally, no cloud uploads
-            - **⚡ Native Performance**: Faster than browser-based solutions
-            - **🎨 Modern UI**: Beautiful Material Design interface
-            - **🔄 Before/After Preview**: Compare original vs converted images
-            
-            ### 🚀 Quick Start
-            
-            **Windows:**
-            1. Download the MSI installer or portable ZIP
-            2. Install or extract and run OpenLoveImage.exe
-            3. Drag and drop your images to convert!
-            
-            **Linux:**
-            1. Download AppImage or DEB package
-            2. For AppImage: \`chmod +x\` and run directly
-            3. For DEB: \`sudo dpkg -i package.deb\`
-            4. Or use portable ZIP for no-install option
-            
-            **macOS:**
-            1. Download DMG file
-            2. Open and drag to Applications folder
-            3. Launch OpenLoveImage from Applications
-            
-            ### ��️ Technical Details
-            - **Frontend**: Next.js 15 + TypeScript + Material-UI
-            - **Backend**: Tauri 2.0 (Rust-based)
-            - **Platforms**: Windows, Linux, macOS
-            - **Architecture**: x64 (Intel/AMD)
-            - **Size**: ~20-30MB installed
-            
-            ### 🔧 Development
-            Built from commit: ${context.sha}
-            Node.js: Latest LTS
-            Tauri: 2.0+
-            
-            ### 📝 Changelog
-            - Native desktop application with Tauri
-            - Cross-platform support (Windows, Linux, macOS)
-            - Improved performance vs web version
-            - Enhanced file system integration
-            - Portable versions available
-            
-            ---
-            **💝 Free and Open Source** - Made with ❤️ for the community
-              `
-            }); 
+            } 
