@@ -21,6 +21,9 @@ const ImageConverterApp = () => {
     colorType: 'rgba',
     lossless: false,
     method: 4,
+    icoSizes: [16, 32, 48],
+    icoIncludeAllSizes: false,
+    icoExportMode: 'single',
     vectorColors: 16,
     pathPrecision: 1.0,
     smoothing: 1.0,
@@ -142,10 +145,11 @@ const ImageConverterApp = () => {
         {/* Main Content */}
         <Stack spacing={4}>
           {/* Unified File Manager */}
-          <UnifiedFileManager
-            onProcessFiles={handleProcessFiles}
-            outputFormat={conversionSettings.outputFormat}
-          />
+                <UnifiedFileManager
+        onProcessFiles={handleProcessFiles}
+        outputFormat={conversionSettings.outputFormat}
+        conversionSettings={conversionSettings}
+      />
 
           {/* Conversion Options */}
           <ConversionOptions

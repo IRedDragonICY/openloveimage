@@ -93,9 +93,10 @@ export interface ProcessedFile {
 interface UnifiedFileManagerProps {
   onProcessFiles: (files: File[], onProgress?: (fileIndex: number, progress: number) => void) => Promise<ProcessedFile[]>;
   outputFormat: string;
+  conversionSettings?: any; // Add conversion settings to determine filename generation
 }
 
-const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManagerProps) => {
+const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }: UnifiedFileManagerProps) => {
   const [files, setFiles] = useState<File[]>([]);
   const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -561,11 +562,22 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
     );
   };
 
+  // Helper function for filename generation
+  const generateOutputFileName = (originalFileName: string, outputFormat: string): string => {
+    let fileExtension = outputFormat === 'jpeg' ? 'jpg' : outputFormat;
+    
+    // Special handling for ICO multiple mode
+    if (outputFormat === 'ico' && conversionSettings?.icoExportMode === 'multiple') {
+      fileExtension = 'zip';
+    }
+    
+    return originalFileName.replace(/\.[^/.]+$/, '') + '.' + fileExtension;
+  };
+
   const downloadSingleFile = (processedFile: ProcessedFile) => {
     if (!processedFile.convertedBlob || !processedFile.originalFile) return;
 
-    const fileExtension = processedFile.outputFormat === 'jpeg' ? 'jpg' : processedFile.outputFormat;
-    const fileName = processedFile.originalFile.name.replace(/\.[^/.]+$/, '') + '.' + fileExtension;
+    const fileName = generateOutputFileName(processedFile.originalFile.name, processedFile.outputFormat);
     
     saveAs(processedFile.convertedBlob, fileName);
   };
@@ -579,8 +591,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
     
     completedFiles.forEach((file) => {
       if (file.convertedBlob && file.originalFile && file.originalFile.name) {
-        const fileExtension = file.outputFormat === 'jpeg' ? 'jpg' : file.outputFormat;
-        const fileName = file.originalFile.name.replace(/\.[^/.]+$/, '') + '.' + fileExtension;
+        const fileName = generateOutputFileName(file.originalFile.name, file.outputFormat);
         zip.file(fileName, file.convertedBlob);
       }
     });
@@ -1120,7 +1131,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                               <IconButton 
                                 onClick={() => file.originalFile && handlePreviewClick(
                                   file.convertedBlob!,
-                                  file.originalFile.name.replace(/\.[^/.]+$/, '') + '.' + (file.outputFormat === 'jpeg' ? 'jpg' : file.outputFormat),
+                                  generateOutputFileName(file.originalFile.name, file.outputFormat),
                                   true,
                                   file.originalFile,
                                   file.convertedSize,

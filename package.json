@@ -52,6 +52,7 @@
     "@mui/material": "^7.1.2",
     "@mui/material-nextjs": "^7.1.1",
     "@mui/system": "^7.1.1",
+    "2ico": "^1.1.2",
     "file-saver": "^2.0.5",
     "heic-to": "^1.1.14",
     "imagetracerjs": "^1.2.6",

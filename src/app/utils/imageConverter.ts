@@ -1,6 +1,8 @@
-import { heicTo, isHeic } from 'heic-to';
-import { ConversionSettings } from '../components/ConversionOptions';
-import { jsPDF } from 'jspdf';
+import {heicTo, isHeic} from 'heic-to';
+import {ConversionSettings} from '../components/ConversionOptions';
+import {jsPDF} from 'jspdf';
+import toICO from '2ico';
+import JSZip from 'jszip';
 
 // Type declaration for imagetracerjs
 interface ImageTracerModule {
@@ -114,6 +116,11 @@ export class ImageConverter {
       return await this.convertToPdf(canvas, width, height, settings);
     }
 
+    // Handle ICO output
+    if (settings.outputFormat === 'ico') {
+      return await this.convertToIco(canvas, settings);
+    }
+
     // Convert to blob for other formats
     return new Promise((resolve, reject) => {
       const mimeType = settings.outputFormat === 'jpeg' ? 'image/jpeg' : 
@@ -169,7 +176,7 @@ export class ImageConverter {
       const vectorQuality = settings?.vectorQuality || 'balanced';
       
       // Vectorization style presets
-      let stylePreset: Record<string, unknown> = {};
+      let stylePreset: Record<string, unknown>;
       switch (vectorQuality) {
         case 'simple':
           stylePreset = {
@@ -291,6 +298,256 @@ export class ImageConverter {
       };
       reader.onerror = reject;
       reader.readAsDataURL(blob);
+    });
+  }
+
+  private static async convertToIco(
+    canvas: HTMLCanvasElement,
+    settings: ConversionSettings
+  ): Promise<Blob> {
+    try {
+      // Get ICO settings
+      const icoSizes = settings.icoIncludeAllSizes 
+        ? [16, 24, 32, 48, 64, 128, 256]
+        : (settings.icoSizes || [16, 32, 48]);
+      
+      const exportMode = settings.icoExportMode || 'single';
+
+      if (exportMode === 'multiple') {
+        // Generate multiple PNG files in a ZIP
+        return await this.convertToMultiplePngZip(canvas, icoSizes, settings);
+      } else {
+        // Generate single ICO file with multiple sizes
+        return await this.convertToSingleIco(canvas, icoSizes);
+      }
+    } catch (error) {
+      console.error('ICO conversion failed:', error);
+      throw new Error(`Failed to convert to ICO: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private static async convertToSingleIco(
+    canvas: HTMLCanvasElement,
+    icoSizes: number[]
+  ): Promise<Blob> {
+    try {
+      console.log('Converting to single ICO with sizes:', icoSizes);
+      
+      // Validate sizes
+      const validSizes = icoSizes.filter(size => size > 0 && size <= 256);
+      if (validSizes.length === 0) {
+        throw new Error('No valid icon sizes provided');
+      }
+      
+      console.log('Valid ICO sizes to include:', validSizes);
+      
+      // Use toICO library to convert canvas to ICO
+      const icoDataUrl = toICO(canvas, validSizes);
+      
+      if (!icoDataUrl || !icoDataUrl.startsWith('data:image/x-icon;base64,')) {
+        throw new Error('Invalid ICO data URL generated');
+      }
+      
+      console.log('ICO data URL generated successfully, length:', icoDataUrl.length);
+      
+      // Convert data URL to blob
+      const response = await fetch(icoDataUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch ICO data: ${response.status}`);
+      }
+      
+      const blob = await response.blob();
+      
+      if (!blob || blob.size === 0) {
+        throw new Error('Generated ICO blob is empty');
+      }
+      
+      console.log('ICO blob generated successfully:', {
+        size: blob.size,
+        type: blob.type,
+        includesSizes: validSizes.length
+      });
+      
+      return blob;
+    } catch (error) {
+      console.error('Single ICO conversion failed:', error);
+      
+      // Fallback: create a simple ICO using canvas conversion
+      console.log('Using fallback ICO conversion method');
+      return await this.convertToIcoFallback(canvas, icoSizes);
+    }
+  }
+
+  private static async convertToMultiplePngZip(
+    canvas: HTMLCanvasElement,
+    icoSizes: number[],
+    settings: ConversionSettings
+  ): Promise<Blob> {
+    console.log('Converting to multiple PNG files in ZIP with sizes:', icoSizes);
+    
+    try {
+      const zip = new JSZip();
+      
+      // Validate sizes
+      const validSizes = icoSizes.filter(size => size > 0 && size <= 512);
+      if (validSizes.length === 0) {
+        throw new Error('No valid icon sizes provided for PNG generation');
+      }
+      
+      console.log('Valid PNG sizes to generate:', validSizes);
+      
+      const generatedFiles: { name: string; blob: Blob }[] = [];
+      
+      // Generate all PNG files first
+      for (const size of validSizes) {
+        try {
+          console.log(`Generating PNG for size: ${size}x${size}`);
+          
+          // Create a fresh canvas for each size
+          const tempCanvas = document.createElement('canvas');
+          const tempCtx = tempCanvas.getContext('2d');
+          
+          if (!tempCtx) {
+            throw new Error(`Failed to get canvas context for ${size}x${size}`);
+          }
+          
+          // Set canvas size
+          tempCanvas.width = size;
+          tempCanvas.height = size;
+          
+          // Clear and draw resized image
+          tempCtx.clearRect(0, 0, size, size);
+          
+          // Use high quality scaling
+          tempCtx.imageSmoothingEnabled = true;
+          tempCtx.imageSmoothingQuality = 'high';
+          tempCtx.drawImage(canvas, 0, 0, size, size);
+          
+          // Convert to PNG blob with error handling
+          const pngBlob = await new Promise<Blob>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(new Error(`Timeout generating PNG for ${size}x${size}`));
+            }, 10000); // 10 second timeout
+            
+            tempCanvas.toBlob(
+              (blob) => {
+                clearTimeout(timeout);
+                if (blob && blob.size > 0) {
+                  resolve(blob);
+                } else {
+                  reject(new Error(`Failed to create ${size}x${size} PNG or blob is empty`));
+                }
+              },
+              'image/png',
+              1.0 // Maximum quality for icons
+            );
+          });
+          
+          const filename = `icon-${size}x${size}.png`;
+          generatedFiles.push({ name: filename, blob: pngBlob });
+          
+          console.log(`Successfully generated ${filename} (${pngBlob.size} bytes)`);
+        } catch (error) {
+          console.error(`Failed to generate PNG for size ${size}x${size}:`, error);
+          // Continue with other sizes but log the error
+        }
+      }
+      
+      if (generatedFiles.length === 0) {
+        throw new Error('Failed to generate any PNG files');
+      }
+      
+      console.log(`Generated ${generatedFiles.length} PNG files`);
+      
+      // Add files to ZIP with proper error handling
+      for (const file of generatedFiles) {
+        try {
+          // Convert blob to ArrayBuffer for more reliable ZIP handling
+          const arrayBuffer = await file.blob.arrayBuffer();
+          zip.file(file.name, arrayBuffer);
+          console.log(`Added ${file.name} to ZIP (${arrayBuffer.byteLength} bytes)`);
+        } catch (error) {
+          console.error(`Failed to add ${file.name} to ZIP:`, error);
+          throw new Error(`Failed to add ${file.name} to ZIP: ${error}`);
+        }
+      }
+      
+      // Generate ZIP blob with optimal settings
+      console.log('Generating ZIP file...');
+      const zipBlob = await zip.generateAsync({ 
+        type: 'blob',
+        compression: 'DEFLATE',
+        compressionOptions: { 
+          level: 6 // Balanced compression
+        },
+        streamFiles: true, // Better for large files
+        platform: 'UNIX' // Better compatibility
+      });
+      
+      if (!zipBlob || zipBlob.size === 0) {
+        throw new Error('Generated ZIP blob is empty');
+      }
+      
+      // Validate ZIP by trying to read it
+      try {
+        const testZip = await JSZip.loadAsync(zipBlob);
+        const fileNames = Object.keys(testZip.files);
+        console.log('ZIP validation successful. Contains files:', fileNames);
+        
+        if (fileNames.length !== generatedFiles.length) {
+          throw new Error(`ZIP validation failed: expected ${generatedFiles.length} files, got ${fileNames.length}`);
+        }
+      } catch (error) {
+        console.error('ZIP validation failed:', error);
+        throw new Error(`Generated ZIP file is corrupted: ${error}`);
+      }
+      
+      console.log('ZIP file generated successfully:', {
+        size: zipBlob.size,
+        filesCount: generatedFiles.length,
+        files: generatedFiles.map(f => f.name)
+      });
+      
+      return zipBlob;
+      
+    } catch (error) {
+      console.error('Multiple PNG ZIP conversion failed:', error);
+      throw new Error(`Failed to create PNG ZIP: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private static async convertToIcoFallback(
+    canvas: HTMLCanvasElement,
+    icoSizes: number[]
+  ): Promise<Blob> {
+    // Simple fallback: just create the largest size as ICO-mimetype PNG
+    const largestSize = Math.max(...icoSizes);
+    const { ctx } = this.getCanvas();
+    
+    // Create temporary canvas for the largest size
+    const tempCanvas = document.createElement('canvas');
+    const tempCtx = tempCanvas.getContext('2d')!;
+    
+    tempCanvas.width = largestSize;
+    tempCanvas.height = largestSize;
+    
+    // Draw resized image
+    tempCtx.clearRect(0, 0, largestSize, largestSize);
+    tempCtx.drawImage(canvas, 0, 0, largestSize, largestSize);
+    
+    // Convert to blob with ICO-like quality
+    return new Promise<Blob>((resolve, reject) => {
+      tempCanvas.toBlob(
+        (blob) => {
+          if (blob) {
+            resolve(blob);
+          } else {
+            reject(new Error('Failed to create fallback ICO'));
+          }
+        },
+        'image/png',
+        1.0
+      );
     });
   }
 
@@ -437,9 +694,7 @@ export class ImageConverter {
       }
 
       // Generate PDF blob
-      const pdfBlob = pdf.output('blob');
-      
-      return pdfBlob;
+      return pdf.output('blob');
 
     } catch (error) {
       console.error('PDF conversion failed:', error);
@@ -918,62 +1173,4 @@ export class ImageConverter {
       };
     }
   }
-
-  static getSupportedFormats(): { input: string[]; output: string[] } {
-    return {
-      input: ['jpeg', 'jpg', 'png', 'gif', 'bmp', 'webp', 'heic', 'heif', 'tiff', 'svg'],
-      output: ['jpeg', 'png', 'webp', 'svg', 'pdf'] // HEIC output not supported in browsers
-    };
-  }
-
-  static async getImageInfo(file: File): Promise<{
-    width: number;
-    height: number;
-    format: string;
-    size: number;
-    isHeic: boolean;
-  }> {
-    try {
-      const isHeicFile = await isHeic(file);
-      
-      if (isHeicFile) {
-        // For HEIC files, we need to convert first to get dimensions
-        const tempBlob = await heicTo({
-          blob: file,
-          type: 'image/jpeg',
-          quality: 0.1 // Low quality for just getting dimensions
-        });
-        
-        const img = await this.loadImage(new File([tempBlob], 'temp.jpg', { type: 'image/jpeg' }));
-        
-        return {
-          width: img.naturalWidth,
-          height: img.naturalHeight,
-          format: 'HEIC',
-          size: file.size,
-          isHeic: true
-        };
-      } else {
-        // Check if it's an SVG file
-        const isSvgFile = (file.type === 'image/svg+xml') || file.name.toLowerCase().endsWith('.svg');
-        
-        let img: HTMLImageElement;
-        if (isSvgFile) {
-          img = await this.loadSvgAsImage(file);
-        } else {
-          img = await this.loadImage(file);
-        }
-        
-        return {
-          width: img.naturalWidth,
-          height: img.naturalHeight,
-          format: isSvgFile ? 'SVG' : (file.type.split('/')[1]?.toUpperCase() || 'Unknown'),
-          size: file.size,
-          isHeic: false
-        };
-      }
-    } catch {
-        throw new Error('Failed to read image information');
-      }
-  }
-} 
+}

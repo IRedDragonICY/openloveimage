@@ -12,7 +12,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
   Chip,
   Alert,
   Divider,
@@ -53,9 +52,10 @@ interface FileProcessorProps {
   onRemoveFile: (index: number) => void;
   onProcessFiles: (files: File[]) => Promise<ProcessedFile[]>;
   outputFormat: string;
+  conversionSettings?: any; // Add conversion settings to determine ICO export mode
 }
 
-const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat }: FileProcessorProps) => {
+const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat, conversionSettings }: FileProcessorProps) => {
   const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -72,6 +72,24 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat }: Fi
   const [thumbnails, setThumbnails] = useState<{ [key: string]: string }>({});
   const [loadingThumbnails, setLoadingThumbnails] = useState<{ [key: string]: boolean }>({});
   // const [overallProgress, setOverallProgress] = useState(0);
+
+  // Helper functions to eliminate code duplication
+  const getFileExtension = (outputFormat: string): string => {
+    if (outputFormat === 'jpeg') return 'jpg';
+    if (outputFormat === 'ico') return 'ico';
+    return outputFormat;
+  };
+
+  const generateOutputFileName = (originalFileName: string, outputFormat: string, settings?: any): string => {
+    let fileExtension = getFileExtension(outputFormat);
+    
+    // Special handling for ICO multiple mode
+    if (outputFormat === 'ico' && settings?.icoExportMode === 'multiple') {
+      fileExtension = 'zip';
+    }
+    
+    return originalFileName.replace(/\.[^/.]+$/, '') + '.' + fileExtension;
+  };
 
   const generateThumbnails = useCallback(async (fileList: File[]) => {
     // Set loading state for all files
@@ -253,8 +271,7 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat }: Fi
   const downloadSingleFile = (processedFile: ProcessedFile) => {
     if (!processedFile.convertedBlob) return;
 
-    const fileExtension = processedFile.outputFormat === 'jpeg' ? 'jpg' : processedFile.outputFormat;
-    const fileName = processedFile.originalFile.name.replace(/\.[^/.]+$/, '') + '.' + fileExtension;
+    const fileName = generateOutputFileName(processedFile.originalFile.name, processedFile.outputFormat, conversionSettings);
     
     saveAs(processedFile.convertedBlob, fileName);
   };
@@ -268,8 +285,7 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat }: Fi
     
     completedFiles.forEach((file) => {
       if (file.convertedBlob) {
-        const fileExtension = file.outputFormat === 'jpeg' ? 'jpg' : file.outputFormat;
-        const fileName = file.originalFile.name.replace(/\.[^/.]+$/, '') + '.' + fileExtension;
+        const fileName = generateOutputFileName(file.originalFile.name, file.outputFormat, conversionSettings);
         zip.file(fileName, file.convertedBlob);
       }
     });
@@ -348,7 +364,57 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat }: Fi
         <List>
           {processedFiles.map((file, index) => (
             <Box key={file.id}>
-              <ListItem>
+              <ListItem
+                secondaryAction={
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    {file.status === 'completed' && file.convertedBlob && (
+                      <>
+                        <IconButton 
+                          onClick={() => handleBeforeAfterClick(file)}
+                          color="secondary"
+                          size="small"
+                          title="Compare before & after"
+                        >
+                          <Compare />
+                        </IconButton>
+                        <IconButton 
+                          onClick={() => handlePreviewClick(
+                            file.convertedBlob!,
+                            generateOutputFileName(file.originalFile.name, file.outputFormat, conversionSettings),
+                            true,
+                            file.originalFile,
+                            file.convertedSize,
+                            file.outputFormat
+                          )}
+                          color="info"
+                          size="small"
+                          title="Preview converted image"
+                        >
+                          <Visibility />
+                        </IconButton>
+                        <IconButton 
+                          onClick={() => downloadSingleFile(file)}
+                          color="primary"
+                          size="small"
+                          title="Download"
+                        >
+                          <Download />
+                        </IconButton>
+                      </>
+                    )}
+                    {file.status === 'pending' && (
+                      <IconButton 
+                        onClick={() => onRemoveFile(index)}
+                        color="error"
+                        size="small"
+                        title="Remove file"
+                      >
+                        <Delete />
+                      </IconButton>
+                    )}
+                  </Box>
+                }
+              >
                 <ListItemAvatar>
                   {loadingThumbnails[file.originalFile.name] ? (
                     <Avatar
@@ -431,56 +497,6 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat }: Fi
                     <Chip size="small" label="Error" color="error" icon={<ErrorIcon />} />
                   )}
                 </Box>
-
-                <ListItemSecondaryAction>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    {file.status === 'completed' && file.convertedBlob && (
-                      <>
-                        <IconButton 
-                          onClick={() => handleBeforeAfterClick(file)}
-                          color="secondary"
-                          size="small"
-                          title="Compare before & after"
-                        >
-                          <Compare />
-                        </IconButton>
-                        <IconButton 
-                          onClick={() => handlePreviewClick(
-                            file.convertedBlob!,
-                            file.originalFile.name.replace(/\.[^/.]+$/, '') + '.' + (file.outputFormat === 'jpeg' ? 'jpg' : file.outputFormat),
-                            true,
-                            file.originalFile,
-                            file.convertedSize,
-                            file.outputFormat
-                          )}
-                          color="info"
-                          size="small"
-                          title="Preview converted image"
-                        >
-                          <Visibility />
-                        </IconButton>
-                        <IconButton 
-                          onClick={() => downloadSingleFile(file)}
-                          color="primary"
-                          size="small"
-                          title="Download"
-                        >
-                          <Download />
-                        </IconButton>
-                      </>
-                    )}
-                    {file.status === 'pending' && (
-                      <IconButton 
-                        onClick={() => onRemoveFile(index)}
-                        color="error"
-                        size="small"
-                        title="Remove file"
-                      >
-                        <Delete />
-                      </IconButton>
-                    )}
-                  </Box>
-                </ListItemSecondaryAction>
               </ListItem>
               {index < processedFiles.length - 1 && <Divider />}
             </Box>

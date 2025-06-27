@@ -16,6 +16,8 @@ import {
   TextField,
   Divider,
   Stack,
+  Chip,
+  Alert,
 } from '@mui/material';
 import { Settings, Tune } from '@mui/icons-material';
 
@@ -40,6 +42,11 @@ export interface ConversionSettings {
   // WebP specific
   lossless?: boolean;
   method?: number;
+  
+  // ICO specific
+  icoSizes?: number[];
+  icoIncludeAllSizes?: boolean;
+  icoExportMode?: 'single' | 'multiple'; // single = one ICO file with multiple sizes, multiple = multiple PNG files
   
   // SVG specific
   vectorColors?: number;
@@ -81,6 +88,7 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
     { value: 'svg', label: 'SVG', description: 'True vector format, infinite scalability' },
     { value: 'pdf', label: 'PDF', description: 'Professional document format, printable' },
     { value: 'heic', label: 'HEIC', description: 'Apple format, efficient compression' },
+    { value: 'ico', label: 'ICO', description: 'Windows icon format' },
   ];
 
   // Get format-specific options visibility
@@ -89,7 +97,8 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
   const isWebp = settings.outputFormat === 'webp';
   const isSvg = settings.outputFormat === 'svg';
   const isPdf = settings.outputFormat === 'pdf';
-  const supportsQuality = isJpeg || isWebp || isPdf || (!isSvg && !isPng);
+  const isIco = settings.outputFormat === 'ico';
+  const supportsQuality = isJpeg || isWebp || isPdf || (!isSvg && !isPng && !isIco);
 
   // Common slider styling to prevent label cutoff
   const sliderStyles = {
@@ -110,7 +119,7 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
     },
   };
 
-  const handleChange = (field: keyof ConversionSettings, value: string | number | boolean | undefined) => {
+  const handleChange = (field: keyof ConversionSettings, value: string | number | boolean | undefined | number[]) => {
     onSettingsChange({
       ...settings,
       [field]: value,
@@ -314,6 +323,154 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
                   sx={sliderStyles}
                 />
               </Box>
+            </Box>
+          )}
+
+          {/* ICO Specific Options */}
+          {isIco && (
+            <Box>
+              <Typography variant="h6" sx={{ mb: 2 }}>ICO Export Options</Typography>
+              
+              {/* Export Mode Selection */}
+              <Box sx={{ mb: 3 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Export Mode</InputLabel>
+                  <Select
+                    value={settings.icoExportMode || 'single'}
+                    label="Export Mode"
+                    onChange={(e) => handleChange('icoExportMode', e.target.value)}
+                  >
+                    <MenuItem value="single">
+                      <Box>
+                        <Typography variant="body1">Single ICO File</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          📄 One .ico file containing multiple sizes (16×16, 32×32, etc.)
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="multiple">
+                      <Box>
+                        <Typography variant="body1">Multiple PNG Files</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          📁 Separate .png files: icon-16x16.png, icon-32x32.png, etc. (in ZIP)
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  </Select>
+                </FormControl>
+                
+                {/* Preview of what will be generated */}
+                <Box sx={{ 
+                  mt: 2, 
+                  p: 2, 
+                  bgcolor: 'rgba(25, 118, 210, 0.1)', 
+                  borderRadius: 1,
+                  border: '1px solid rgba(25, 118, 210, 0.2)'
+                }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                    📦 Output Preview:
+                  </Typography>
+                  {settings.icoExportMode === 'multiple' ? (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        You will get: <strong>1 ZIP file</strong> containing:
+                      </Typography>
+                      <Box sx={{ ml: 2, mt: 1 }}>
+                        {(settings.icoIncludeAllSizes 
+                          ? [16, 24, 32, 48, 64, 128, 256]
+                          : (settings.icoSizes || [16, 32, 48])
+                        ).map(size => (
+                          <Typography key={size} variant="caption" display="block" color="text.secondary">
+                            📄 icon-{size}x{size}.png
+                          </Typography>
+                        ))}
+                      </Box>
+                    </Box>
+                  ) : (
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        You will get: <strong>1 ICO file</strong> containing all sizes internally:
+                      </Typography>
+                      <Box sx={{ ml: 2, mt: 1 }}>
+                        <Typography variant="caption" display="block" color="text.secondary">
+                          📄 filename.ico (contains: {(settings.icoIncludeAllSizes 
+                            ? [16, 24, 32, 48, 64, 128, 256]
+                            : (settings.icoSizes || [16, 32, 48])
+                          ).join('×, ')}× pixels)
+                        </Typography>
+                      </Box>
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+              
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={settings.icoIncludeAllSizes || false}
+                    onChange={(e) => handleChange('icoIncludeAllSizes', e.target.checked)}
+                  />
+                }
+                label="Include all standard sizes (16, 24, 32, 48, 64, 128, 256)"
+                sx={{ mb: 2 }}
+              />
+              
+              {!settings.icoIncludeAllSizes && (
+                <Box>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    Custom icon sizes (select multiple):
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                    {[16, 24, 32, 48, 64, 96, 128, 256].map((size) => (
+                      <Chip
+                        key={size}
+                        label={`${size}×${size}`}
+                        clickable
+                        color={settings.icoSizes?.includes(size) ? "primary" : "default"}
+                        onClick={() => {
+                          const currentSizes = settings.icoSizes || [16, 32, 48];
+                          const newSizes = currentSizes.includes(size)
+                            ? currentSizes.filter(s => s !== size)
+                            : [...currentSizes, size].sort((a, b) => a - b);
+                          handleChange('icoSizes', newSizes.length > 0 ? newSizes : [16]);
+                        }}
+                        variant={settings.icoSizes?.includes(size) ? "filled" : "outlined"}
+                      />
+                    ))}
+                  </Box>
+                  
+                  <Typography variant="body2" color="text.secondary">
+                    Current sizes: {(settings.icoSizes || [16, 32, 48]).join(', ')} pixels
+                  </Typography>
+                </Box>
+              )}
+              
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                💡 {settings.icoExportMode === 'multiple' 
+                  ? 'Multiple PNG files will be generated - one for each selected size. Perfect for providing different resolutions.' 
+                  : 'Single ICO file will contain all selected sizes. Standard format for Windows icons and favicons.'}
+              </Typography>
+              
+              {/* Important Note */}
+              <Alert severity="info" sx={{ mt: 2 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                  📋 Important Notes:
+                </Typography>
+                {settings.icoExportMode === 'multiple' ? (
+                  <Typography variant="body2">
+                    • You will get <strong>1 ZIP file</strong> containing separate PNG files<br/>
+                    • Extract the ZIP to get individual PNG files for each size<br/>
+                    • Perfect for app development or when you need separate size files
+                  </Typography>
+                ) : (
+                  <Typography variant="body2">
+                    • You will get <strong>1 ICO file</strong> containing all sizes internally<br/>
+                    • This is the standard ICO format used by Windows and web browsers<br/>
+                    • The single ICO file contains multiple resolutions, not separate files<br/>
+                    • Perfect for favicons and Windows desktop icons
+                  </Typography>
+                )}
+              </Alert>
             </Box>
           )}
 
@@ -817,6 +974,23 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
                   • Use case: Reports, portfolios, presentations, archival documents<br/>
                   • Compatibility: Universal - opens on any device with PDF reader<br/>
                   • Professional: Industry standard for document sharing and printing
+                </Typography>
+              </Box>
+            )}
+
+            {isIco && (
+              <Box sx={{ p: 2, bgcolor: 'rgba(103, 58, 183, 0.1)', borderRadius: 1 }}>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>ICO - Icon Format</strong>
+                </Typography>
+                <Typography variant="caption" display="block" color="text.secondary">
+                  • Best for: Windows icons, favicons, application icons<br/>
+                  • Type: Multi-resolution icon format<br/>
+                  • Features: Multiple sizes in one file (16×16, 32×32, 48×48, etc.)<br/>
+                  • Compatibility: Native Windows support, web favicons<br/>
+                  • Quality: Lossless, optimized for small sizes<br/>
+                  • Use case: Desktop icons, website favicons, application resources<br/>
+                  • Platform: Primarily Windows, but supported across platforms for favicons
                 </Typography>
               </Box>
             )}
