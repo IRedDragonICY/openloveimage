@@ -100,7 +100,6 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
   const [thumbnails, setThumbnails] = useState<{ [key: string]: string }>({});
   const [loadingThumbnails, setLoadingThumbnails] = useState<{ [key: string]: boolean }>({});
   const [expandedFiles, setExpandedFiles] = useState(true);
-  const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
   
   // Preview states
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -124,8 +123,6 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
     const fileSize = file.size;
     const chunkSize = Math.max(fileSize / 20, 1024 * 50); // Simulate chunks
     let uploadedSize = 0;
-
-    setUploadingFiles(prev => new Set([...prev, fileName]));
 
     return new Promise<void>((resolve) => {
       const interval = setInterval(() => {
@@ -151,11 +148,6 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
 
         if (uploadedSize >= fileSize) {
           clearInterval(interval);
-          setUploadingFiles(prev => {
-            const newSet = new Set(prev);
-            newSet.delete(fileName);
-            return newSet;
-          });
           resolve();
         }
       }, 100);
@@ -180,7 +172,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
 
     // Wait for all uploads to complete
     await Promise.all(uploadPromises);
-  }, [files, simulateUploadProgress]);
+  }, [files, simulateUploadProgress]); // generateThumbnails stable due to its own dependencies
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,

@@ -5,7 +5,37 @@
 [![Next.js](https://img.shields.io/badge/Next.js-15.3.4-black?logo=next.js)](https://nextjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)](https://www.typescriptlang.org/)
 [![Material-UI](https://img.shields.io/badge/Material--UI-7.1.2-blue?logo=mui)](https://mui.com/)
+[![Tauri](https://img.shields.io/badge/Tauri-2.0-orange?logo=tauri)](https://tauri.app/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+
+## 🖥️ Desktop Application
+
+OpenLoveImage is now available as a **native Windows desktop application** built with [Tauri](https://tauri.app/)! 
+
+### Why Desktop?
+- **🚀 Better Performance**: Native performance without browser limitations
+- **📁 Direct File Access**: Drag files directly from Windows Explorer
+- **🔒 Enhanced Privacy**: No internet connection required
+- **💾 System Integration**: Better file association and system tray support
+- **⚡ Faster Processing**: Optimized for desktop hardware
+
+### Quick Start (Desktop)
+```bash
+# Run in development mode
+npm run tauri:dev
+
+# Build for production (Windows)
+npm run tauri:build
+
+# Build for specific platforms
+npm run release:windows  # Windows x64
+npm run release:linux    # Linux x64
+npm run release:macos    # macOS Universal
+
+# Or use the build scripts
+./build-desktop.ps1  # PowerShell
+./build-desktop.bat  # Batch file
+```
 
 ## ✨ Features
 
@@ -57,8 +87,13 @@
 
 ### Prerequisites
 
+**For Web Application:**
 - Node.js 18.0 or later
 - npm or yarn package manager
+
+**For Desktop Application (Additional):**
+- [Rust](https://rustup.rs/) (latest stable version)
+- Windows 10/11 (for Windows builds)
 
 ### Installation
 
@@ -122,6 +157,51 @@ npm run start
 - **Fast (1-3)**: Quick processing, larger files
 - **Balanced (4-6)**: Good balance of speed and size
 - **Best (7-9)**: Maximum compression, slower processing
+
+### Desktop Application Usage
+
+#### Development Mode
+```bash
+npm run tauri:dev
+```
+This starts both the Next.js development server and the Tauri desktop application.
+
+#### Building for Production
+```bash
+# Method 1: Using npm scripts
+npm run tauri:build
+
+# Method 2: Using PowerShell script (recommended)
+./build-desktop.ps1
+
+# Method 3: Using batch file
+./build-desktop.bat
+```
+
+#### Desktop-Specific Features
+- **Native File Dialogs**: Use Windows file picker for better UX
+- **Drag & Drop from Explorer**: Drag files directly from Windows Explorer
+- **System Notifications**: Native Windows notifications for completion
+- **Auto-Updater**: Automatic updates when new versions are available
+- **No Browser Required**: Runs as a standalone application
+
+## 🚀 Automated Releases
+
+Every commit to the `main` branch automatically triggers a GitHub Actions workflow that:
+
+### 📦 Builds for Multiple Platforms
+- **Windows x64**: MSI installer, NSIS setup, and portable ZIP
+- **Linux x64**: AppImage, DEB package, and portable ZIP
+- **macOS**: DMG package for both Intel and Apple Silicon
+
+### 🔄 Auto-Release Process
+1. **Build**: Compiles the application for all platforms
+2. **Package**: Creates installers and portable versions
+3. **Release**: Automatically creates a GitHub release
+4. **Upload**: Uploads all build artifacts to the release
+
+### 📥 Download Latest Release
+Visit the [Releases page](https://github.com/ireddragonicy/openloveimage/releases) to download the latest version for your platform.
 
 ## 🔧 Configuration
 

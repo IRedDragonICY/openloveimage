@@ -2,12 +2,13 @@ import { heicTo, isHeic } from 'heic-to';
 import { ConversionSettings } from '../components/ConversionOptions';
 
 // Type declaration for imagetracerjs
-declare const ImageTracer: {
-  imagedataToSVG: (imageData: ImageData, options?: any) => string;
-};
+interface ImageTracerModule {
+  imagedataToSVG: (imageData: ImageData, options?: Record<string, unknown>) => string;
+}
 
 // Import imagetracerjs
-const ImageTracerModule = require('imagetracerjs');
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const ImageTracerModule = require('imagetracerjs') as ImageTracerModule;
 
 export interface ConversionResult {
   success: boolean;
@@ -161,7 +162,7 @@ export class ImageConverter {
       const vectorQuality = settings?.vectorQuality || 'balanced';
       
       // Vectorization style presets
-      let stylePreset: any = {};
+      let stylePreset: Record<string, unknown> = {};
       switch (vectorQuality) {
         case 'simple':
           stylePreset = {

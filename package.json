@@ -24,7 +24,14 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "tauri:build": "tauri build",
+    "tauri:build:debug": "tauri build --debug",
+    "release:windows": "tauri build --target x86_64-pc-windows-msvc",
+    "release:linux": "tauri build --target x86_64-unknown-linux-gnu",
+    "release:macos": "tauri build --target universal-apple-darwin"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -45,6 +52,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
+    "@tauri-apps/cli": "^2.6.1",
     "@types/file-saver": "^2.0.7",
     "@types/node": "^20",
     "@types/react": "^19",

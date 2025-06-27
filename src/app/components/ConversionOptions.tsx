@@ -11,7 +11,6 @@ import {
   MenuItem,
   Slider,
   Box,
-  Chip,
   Switch,
   FormControlLabel,
   TextField,
