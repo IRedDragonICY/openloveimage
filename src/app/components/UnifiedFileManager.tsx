@@ -13,7 +13,6 @@ import {
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
   Chip,
   Alert,
   Divider,
@@ -141,7 +140,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
         setLoadingThumbnails(prev => ({ ...prev, [file.name]: false }));
       }
     }
-  }, []);
+  }, [setLoadingThumbnails, setThumbnails]);
 
   const createThumbnail = async (file: File): Promise<string> => {
     try {
@@ -521,7 +520,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
               )}
             </Stack>
 
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography variant="body2" component="div" color="text.secondary" sx={{ mb: 2 }}>
               <strong>Supported formats:</strong> HEIC, JPG, PNG, WebP, GIF, BMP, TIFF, SVG
             </Typography>
             
@@ -621,10 +620,10 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
             {isProcessing && (
               <Box sx={{ mb: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" component="span" color="text.secondary">
                     Converting images...
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
+                  <Typography variant="body2" component="span" color="text.secondary">
                     {completedCount}/{files.length}
                   </Typography>
                 </Box>
@@ -647,21 +646,23 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                 sx={{ mb: 3, borderRadius: 2 }}
                 icon={errorCount > 0 ? <Error /> : <CheckCircle />}
               >
-                <Typography variant="body2" sx={{ fontWeight: 500 }}>
-                  {completedCount > 0 && `✅ ${completedCount} files converted successfully. `}
-                  {errorCount > 0 && `⚠️ ${errorCount} files failed to convert.`}
-                </Typography>
-                {totalConvertedSize > 0 && (
-                  <Typography variant="body2" color="text.secondary">
-                    Total size: {formatFileSize(totalOriginalSize)} → {formatFileSize(totalConvertedSize)} 
-                    <Chip 
-                      label={getSavingsPercentage(totalOriginalSize, totalConvertedSize)}
-                      size="small"
-                      color={getSavingsPercentage(totalOriginalSize, totalConvertedSize).startsWith('-') ? 'success' : 'warning'}
-                      sx={{ ml: 1, fontWeight: 600 }}
-                    />
+                <Box>
+                  <Typography variant="body2" component="div" sx={{ fontWeight: 500 }}>
+                    {completedCount > 0 && `✅ ${completedCount} files converted successfully. `}
+                    {errorCount > 0 && `⚠️ ${errorCount} files failed to convert.`}
                   </Typography>
-                )}
+                  {totalConvertedSize > 0 && (
+                    <Typography variant="body2" component="div" color="text.secondary">
+                      Total size: {formatFileSize(totalOriginalSize)} → {formatFileSize(totalConvertedSize)} 
+                      <Chip 
+                        label={getSavingsPercentage(totalOriginalSize, totalConvertedSize)}
+                        size="small"
+                        color={getSavingsPercentage(totalOriginalSize, totalConvertedSize).startsWith('-') ? 'success' : 'warning'}
+                        sx={{ ml: 1, fontWeight: 600 }}
+                      />
+                    </Typography>
+                  )}
+                </Box>
               </Alert>
             )}
 

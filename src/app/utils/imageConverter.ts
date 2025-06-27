@@ -136,13 +136,6 @@ export class ImageConverter {
       throw new Error(`HEIC conversion failed: ${error}`);
     }
   }
-
-  private static async convertToHeic(): Promise<Blob> {
-    // Note: Converting TO HEIC is not supported by browsers natively
-    // We'll convert to JPEG as a fallback
-    throw new Error('Converting TO HEIC format is not supported in browsers. Please use JPEG, PNG, or WebP as output format.');
-  }
-
   private static async convertRegularImage(
     file: File,
     settings: ConversionSettings

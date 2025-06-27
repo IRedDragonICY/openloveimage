@@ -17,7 +17,6 @@ import {
 } from '@mui/material';
 import {
   Close,
-  ZoomIn,
   Download,
   Info,
 } from '@mui/icons-material';

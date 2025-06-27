@@ -62,7 +62,6 @@ const BeforeAfterPreview = ({
   const [isDragging, setIsDragging] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [panPosition, setPanPosition] = useState({ x: 0, y: 0 });
-  const [isZooming, setIsZooming] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [lastPanPoint, setLastPanPoint] = useState({ x: 0, y: 0 });
 
@@ -89,7 +88,7 @@ const BeforeAfterPreview = ({
       const loadImages = async () => {
         try {
           let originalUrl: string;
-          let convertedUrl: string;
+          const convertedUrl: string = URL.createObjectURL(convertedFile);
 
           // Handle original file (might be HEIC)
           const isOriginalHeic = await isHeic(originalFile);
@@ -110,9 +109,6 @@ const BeforeAfterPreview = ({
           } else {
             originalUrl = URL.createObjectURL(originalFile);
           }
-
-          // Handle converted file (should already be in supported format)
-          convertedUrl = URL.createObjectURL(convertedFile);
 
           setOriginalImageUrl(originalUrl);
           setConvertedImageUrl(convertedUrl);
@@ -525,7 +521,7 @@ const BeforeAfterPreview = ({
                       objectPosition: 'center',
                       transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,
                       transformOrigin: 'center center',
-                      transition: isZooming ? 'none' : 'transform 0.1s ease-out',
+                      transition: 'transform 0.1s ease-out',
                     }}
                   />
 
@@ -545,7 +541,7 @@ const BeforeAfterPreview = ({
                       clipPath: `polygon(0 0, ${sliderPosition}% 0, ${sliderPosition}% 100%, 0 100%)`,
                       transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,
                       transformOrigin: 'center center',
-                      transition: isZooming ? 'none' : 'transform 0.1s ease-out',
+                      transition: 'transform 0.1s ease-out',
                     }}
                   />
 
@@ -670,7 +666,7 @@ const BeforeAfterPreview = ({
                         objectFit: 'contain',
                         transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,
                         transformOrigin: 'center center',
-                        transition: isZooming ? 'none' : 'transform 0.1s ease-out',
+                        transition: 'transform 0.1s ease-out',
                       }}
                     />
                     <Chip
@@ -707,7 +703,7 @@ const BeforeAfterPreview = ({
                         objectFit: 'contain',
                         transform: `scale(${zoomLevel}) translate(${panPosition.x / zoomLevel}px, ${panPosition.y / zoomLevel}px)`,
                         transformOrigin: 'center center',
-                        transition: isZooming ? 'none' : 'transform 0.1s ease-out',
+                        transition: 'transform 0.1s ease-out',
                       }}
                     />
                     <Chip
@@ -862,7 +858,7 @@ const BeforeAfterPreview = ({
                     sx={{ fontSize: '0.75rem' }}
                   />
                 </Box>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                <Typography variant="body2" component="div" color="text.secondary" sx={{ mb: 3 }}>
                   {zoomLevel > 1 
                     ? 'Drag images to pan • Scroll wheel to zoom • Use controls or buttons below'
                     : 'Drag the handle above or use the slider below to compare your images'

@@ -29,14 +29,14 @@ export default function Home() {
             <Typography variant="h6" gutterBottom>
               OpenLoveImage
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography variant="body2" component="div" color="text.secondary" sx={{ mb: 2 }}>
               Free, secure, and powerful image conversion tool built with modern web technologies
             </Typography>
-            <Typography variant="caption" color="text.secondary">
+            <Typography variant="caption" component="div" color="text.secondary">
               Built with Next.js, TypeScript, Material-UI, and heic-to library
             </Typography>
             <Box sx={{ mt: 2 }}>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" component="div" color="text.secondary">
                 © {new Date().getFullYear()} OpenLoveImage. All rights reserved. 
                 Made with ❤️ for the open source community.
               </Typography>
