@@ -47,6 +47,25 @@ export interface ConversionSettings {
   smoothing?: number;
   simplification?: number;
   vectorQuality?: string;
+  
+  // PDF specific
+  pageSize?: string;
+  orientation?: string;
+  dpi?: number;
+  pdfCompression?: number;
+  imagePlacement?: string;
+  marginTop?: number;
+  marginBottom?: number;
+  marginLeft?: number;
+  marginRight?: number;
+  imagesPerPage?: number;
+  pageLayout?: string;
+  embedFonts?: boolean;
+  allowPrinting?: boolean;
+  allowCopying?: boolean;
+  passwordProtect?: boolean;
+  ownerPassword?: string;
+  userPassword?: string;
 }
 
 interface ConversionOptionsProps {
@@ -60,6 +79,7 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
     { value: 'png', label: 'PNG', description: 'Lossless with transparency support' },
     { value: 'webp', label: 'WebP', description: 'Modern format, excellent compression' },
     { value: 'svg', label: 'SVG', description: 'True vector format, infinite scalability' },
+    { value: 'pdf', label: 'PDF', description: 'Professional document format, printable' },
     { value: 'heic', label: 'HEIC', description: 'Apple format, efficient compression' },
   ];
 
@@ -68,7 +88,8 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
   const isPng = settings.outputFormat === 'png';
   const isWebp = settings.outputFormat === 'webp';
   const isSvg = settings.outputFormat === 'svg';
-  const supportsQuality = isJpeg || isWebp || (!isSvg && !isPng);
+  const isPdf = settings.outputFormat === 'pdf';
+  const supportsQuality = isJpeg || isWebp || isPdf || (!isSvg && !isPng);
 
   // Common slider styling to prevent label cutoff
   const sliderStyles = {
@@ -138,7 +159,7 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
             {supportsQuality && (
               <Box sx={{ flex: 1 }}>
                 <Typography gutterBottom>
-                  {isSvg ? 'Vectorization Quality' : 'Quality'}: {settings.quality}%
+                  {isSvg ? 'Vectorization Quality' : isPdf ? 'Image Quality in PDF' : 'Quality'}: {settings.quality}%
                 </Typography>
                 <Box sx={{ px: 2 }}>
                   <Slider
@@ -153,6 +174,11 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
                         { value: 50, label: 'Balanced' },
                         { value: 75, label: 'Detailed' },
                         { value: 100, label: 'Maximum' },
+                      ] : isPdf ? [
+                        { value: 25, label: 'Small' },
+                        { value: 50, label: 'Balanced' },
+                        { value: 75, label: 'High' },
+                        { value: 100, label: 'Print' },
                       ] : [
                         { value: 25, label: 'Low' },
                         { value: 50, label: 'Medium' },
@@ -289,6 +315,193 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
                 />
               </Box>
             </Box>
+          )}
+
+          {/* PDF Specific Options */}
+          {isPdf && (
+            <>
+              {/* Page Setup Row */}
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: { xs: 'column', md: 'row' }, 
+                gap: 3 
+              }}>
+                {/* Page Size */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Page Size</InputLabel>
+                    <Select
+                      value={settings.pageSize || 'A4'}
+                      label="Page Size"
+                      onChange={(e) => handleChange('pageSize', e.target.value)}
+                    >
+                      <MenuItem value="A4">A4 (210 × 297 mm)</MenuItem>
+                      <MenuItem value="A3">A3 (297 × 420 mm)</MenuItem>
+                      <MenuItem value="A5">A5 (148 × 210 mm)</MenuItem>
+                      <MenuItem value="Letter">Letter (8.5 × 11 in)</MenuItem>
+                      <MenuItem value="Legal">Legal (8.5 × 14 in)</MenuItem>
+                      <MenuItem value="Tabloid">Tabloid (11 × 17 in)</MenuItem>
+                      <MenuItem value="Custom">Custom Size</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                {/* Orientation */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Orientation</InputLabel>
+                    <Select
+                      value={settings.orientation || 'Portrait'}
+                      label="Orientation"
+                      onChange={(e) => handleChange('orientation', e.target.value)}
+                    >
+                      <MenuItem value="Portrait">Portrait</MenuItem>
+                      <MenuItem value="Landscape">Landscape</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                {/* DPI */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>DPI (Resolution)</InputLabel>
+                    <Select
+                      value={settings.dpi || 300}
+                      label="DPI (Resolution)"
+                      onChange={(e) => handleChange('dpi', Number(e.target.value))}
+                    >
+                      <MenuItem value={72}>72 DPI (Screen)</MenuItem>
+                      <MenuItem value={150}>150 DPI (Draft)</MenuItem>
+                      <MenuItem value={300}>300 DPI (Print)</MenuItem>
+                      <MenuItem value={600}>600 DPI (High Quality)</MenuItem>
+                      <MenuItem value={1200}>1200 DPI (Professional)</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+              </Box>
+
+              {/* Image Layout Row */}
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: { xs: 'column', md: 'row' }, 
+                gap: 3 
+              }}>
+                {/* Image Placement */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Image Placement</InputLabel>
+                    <Select
+                      value={settings.imagePlacement || 'fit'}
+                      label="Image Placement"
+                      onChange={(e) => handleChange('imagePlacement', e.target.value)}
+                    >
+                      <MenuItem value="fit">Fit to Page (maintain aspect)</MenuItem>
+                      <MenuItem value="fill">Fill Page (may crop)</MenuItem>
+                      <MenuItem value="center">Center (original size)</MenuItem>
+                      <MenuItem value="stretch">Stretch to Fill</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                {/* Images Per Page */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Images Per Page</InputLabel>
+                    <Select
+                      value={settings.imagesPerPage || 1}
+                      label="Images Per Page"
+                      onChange={(e) => handleChange('imagesPerPage', Number(e.target.value))}
+                    >
+                      <MenuItem value={1}>1 Image per Page</MenuItem>
+                      <MenuItem value={2}>2 Images per Page</MenuItem>
+                      <MenuItem value={4}>4 Images per Page</MenuItem>
+                      <MenuItem value={6}>6 Images per Page</MenuItem>
+                      <MenuItem value={9}>9 Images per Page</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                {/* Page Layout */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Page Layout</InputLabel>
+                    <Select
+                      value={settings.pageLayout || 'auto'}
+                      label="Page Layout"
+                      onChange={(e) => handleChange('pageLayout', e.target.value)}
+                    >
+                      <MenuItem value="auto">Auto Layout</MenuItem>
+                      <MenuItem value="grid">Grid Layout</MenuItem>
+                      <MenuItem value="vertical">Vertical Stack</MenuItem>
+                      <MenuItem value="horizontal">Horizontal Stack</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+              </Box>
+
+              {/* PDF Compression */}
+              <Box>
+                <Typography gutterBottom>
+                  PDF Compression Level: {settings.pdfCompression || 5}
+                </Typography>
+                <Box sx={{ px: 2 }}>
+                  <Slider
+                    value={settings.pdfCompression || 5}
+                    onChange={(_, value) => handleChange('pdfCompression', value)}
+                    min={1}
+                    max={9}
+                    step={1}
+                    marks={[
+                      { value: 1, label: 'None' },
+                      { value: 3, label: 'Light' },
+                      { value: 5, label: 'Balanced' },
+                      { value: 7, label: 'High' },
+                      { value: 9, label: 'Maximum' },
+                    ]}
+                    sx={sliderStyles}
+                  />
+                </Box>
+              </Box>
+
+              {/* Margins */}
+              <Box>
+                <Typography variant="h6" sx={{ mb: 2 }}>Page Margins (mm)</Typography>
+                <Box sx={{ 
+                  display: 'flex', 
+                  flexDirection: { xs: 'column', sm: 'row' }, 
+                  gap: 2 
+                }}>
+                  <TextField
+                    label="Top"
+                    type="number"
+                    value={settings.marginTop || 20}
+                    onChange={(e) => handleChange('marginTop', Number(e.target.value))}
+                    sx={{ flex: 1 }}
+                  />
+                  <TextField
+                    label="Bottom"
+                    type="number"
+                    value={settings.marginBottom || 20}
+                    onChange={(e) => handleChange('marginBottom', Number(e.target.value))}
+                    sx={{ flex: 1 }}
+                  />
+                  <TextField
+                    label="Left"
+                    type="number"
+                    value={settings.marginLeft || 20}
+                    onChange={(e) => handleChange('marginLeft', Number(e.target.value))}
+                    sx={{ flex: 1 }}
+                  />
+                  <TextField
+                    label="Right"
+                    type="number"
+                    value={settings.marginRight || 20}
+                    onChange={(e) => handleChange('marginRight', Number(e.target.value))}
+                    sx={{ flex: 1 }}
+                  />
+                </Box>
+              </Box>
+            </>
           )}
 
           <Divider sx={{ my: 2 }} />
@@ -446,6 +659,85 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
                   </Typography>
                 </Box>
               )}
+
+              {/* PDF Advanced Options */}
+              {isPdf && (
+                <Box>
+                  <Stack spacing={2}>
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={settings.embedFonts || true}
+                          onChange={(e) => handleChange('embedFonts', e.target.checked)}
+                        />
+                      }
+                      label="Embed Fonts (better compatibility)"
+                    />
+
+                    <Typography variant="h6" sx={{ mt: 2 }}>Security Options</Typography>
+                    
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={settings.passwordProtect || false}
+                          onChange={(e) => handleChange('passwordProtect', e.target.checked)}
+                        />
+                      }
+                      label="Password Protection"
+                    />
+
+                    {settings.passwordProtect && (
+                      <Box sx={{ 
+                        display: 'flex', 
+                        flexDirection: { xs: 'column', sm: 'row' }, 
+                        gap: 2, 
+                        ml: 4 
+                      }}>
+                        <TextField
+                          label="User Password (for opening)"
+                          type="password"
+                          value={settings.userPassword || ''}
+                          onChange={(e) => handleChange('userPassword', e.target.value)}
+                          placeholder="Leave empty for no user password"
+                          sx={{ flex: 1 }}
+                        />
+                        <TextField
+                          label="Owner Password (for editing)"
+                          type="password"
+                          value={settings.ownerPassword || ''}
+                          onChange={(e) => handleChange('ownerPassword', e.target.value)}
+                          placeholder="Leave empty for no owner password"
+                          sx={{ flex: 1 }}
+                        />
+                      </Box>
+                    )}
+
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={settings.allowPrinting !== false}
+                          onChange={(e) => handleChange('allowPrinting', e.target.checked)}
+                        />
+                      }
+                      label="Allow Printing"
+                    />
+
+                    <FormControlLabel
+                      control={
+                        <Switch
+                          checked={settings.allowCopying !== false}
+                          onChange={(e) => handleChange('allowCopying', e.target.checked)}
+                        />
+                      }
+                      label="Allow Text/Image Copying"
+                    />
+
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                      🔒 Security features help protect your PDF from unauthorized access and modifications
+                    </Typography>
+                  </Stack>
+                </Box>
+              )}
             </Stack>
           </Box>
 
@@ -508,6 +800,23 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
                   • Scalability: Infinite - zoom without quality loss<br/>
                   • Editing: Fully editable in vector graphics software<br/>
                   • Use case: Logos, icons, print graphics, responsive web design
+                </Typography>
+              </Box>
+            )}
+
+            {isPdf && (
+              <Box sx={{ p: 2, bgcolor: 'rgba(244, 67, 54, 0.1)', borderRadius: 1 }}>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>PDF - Portable Document Format</strong>
+                </Typography>
+                <Typography variant="caption" display="block" color="text.secondary">
+                  • Best for: Professional documents, multi-page layouts, printing<br/>
+                  • Type: Document format with embedded images<br/>
+                  • Features: Multi-page support, security options, universal compatibility<br/>
+                  • Quality: Preserves original image quality with compression options<br/>
+                  • Use case: Reports, portfolios, presentations, archival documents<br/>
+                  • Compatibility: Universal - opens on any device with PDF reader<br/>
+                  • Professional: Industry standard for document sharing and printing
                 </Typography>
               </Box>
             )}

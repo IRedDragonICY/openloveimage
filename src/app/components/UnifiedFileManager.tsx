@@ -86,6 +86,8 @@ export interface ProcessedFile {
   // Conversion progress tracking
   conversionProgress?: number; // 0-100
   conversionStartTime?: number;
+  // PDF multi-page support
+  isMergedIntoPdf?: boolean; // Flag to indicate file was merged into a multi-page PDF
 }
 
 interface UnifiedFileManagerProps {
@@ -347,99 +349,108 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
     setBeforeAfterFile(null);
   };
 
-  // Processing functions
+  // Processing functions - Refactored to use individual processing logic
   const handleProcessFiles = async () => {
-    const pendingFiles = files.filter((_, index) => processedFiles[index]?.status === 'pending');
-    if (pendingFiles.length === 0) return;
+    // Get indices of pending files
+    const pendingIndices = processedFiles
+      .map((file, index) => file.status === 'pending' ? index : -1)
+      .filter(index => index !== -1);
+    
+    if (pendingIndices.length === 0) return;
 
     setIsProcessing(true);
 
     try {
-      // Only set processing status for pending files with initial progress
-      setProcessedFiles(prev => 
-        prev.map(file => 
-          file.status === 'pending' 
-            ? { 
-                ...file, 
-                status: 'processing' as const, 
-                error: undefined,
-                conversionProgress: 0,
-                conversionStartTime: Date.now()
-              }
-            : file
-        )
-      );
-
-      // Create a custom progress handler for individual file progress
-      const handleIndividualProgress = (fileIndex: number, progress: number) => {
-        const actualFileIndex = files.findIndex((_, index) => 
-          processedFiles[index]?.status === 'processing'
-        );
+      // Process each pending file sequentially using the same logic as individual conversion
+      for (let i = 0; i < pendingIndices.length; i++) {
+        const fileIndex = pendingIndices[i];
+        const targetFile = files[fileIndex];
         
-        if (actualFileIndex !== -1) {
+        if (!targetFile) continue;
+
+        // Update status to processing for this specific file
+        setProcessedFiles(prev => 
+          prev.map((file, index) => 
+            index === fileIndex 
+              ? { 
+                  ...file, 
+                  status: 'processing' as const, 
+                  error: undefined,
+                  conversionProgress: 0,
+                  conversionStartTime: Date.now()
+                }
+              : file
+          )
+        );
+
+        try {
+          // Create progress handler for this specific file
+          const handleProgress = (fileIdx: number, progress: number) => {
+            setProcessedFiles(prev => 
+              prev.map((file, index) => 
+                index === fileIndex 
+                  ? { ...file, conversionProgress: progress }
+                  : file
+              )
+            );
+          };
+
+          // Use the same conversion logic as individual file processing
+          const results = await onProcessFiles([targetFile], handleProgress);
+          const result = results[0];
+          
+          // Validate single result
+          if (!results || results.length === 0 || !result) {
+            throw new Error('No conversion result received');
+          }
+          
+          // Update this specific file with success result
           setProcessedFiles(prev => 
             prev.map((file, index) => {
-              const relativeIndex = prev.filter(f => f.status === 'processing').findIndex((_, i) => i === fileIndex);
-              if (file.status === 'processing' && prev.indexOf(file) === actualFileIndex + relativeIndex) {
-                return {
-                  ...file,
-                  conversionProgress: progress
+              if (index === fileIndex) {
+                // Ensure status is explicitly set based on conversion success
+                const finalStatus = result.status === 'completed' || result.convertedBlob ? 'completed' : 'error';
+                return { 
+                  ...file, // Keep original file data
+                  ...result, // Apply conversion results
+                  originalFile: file.originalFile, // Ensure originalFile is preserved
+                  status: finalStatus, // Use the final determined status
+                  conversionProgress: 100 
                 };
               }
               return file;
             })
           );
+          
+        } catch (error) {
+          console.error(`File ${fileIndex} processing failed:`, error);
+          // Update this specific file with error
+          setProcessedFiles(prev => 
+            prev.map((file, index) => 
+              index === fileIndex 
+                ? { 
+                    ...file, 
+                    status: 'error' as const, 
+                    error: error instanceof Error ? error.message : 'Processing failed',
+                    conversionProgress: 100
+                  }
+                : file
+            )
+          );
         }
-      };
-
-      const results = await onProcessFiles(pendingFiles, handleIndividualProgress);
-      
-      // Validate results array
-      processedFiles.filter(f => f.status === 'processing');
-      if (results.length !== pendingFiles.length) {
-        console.warn(`Results mismatch: expected ${pendingFiles.length} results, got ${results.length}`);
       }
       
-      // Update only the files that were processed
-      let resultIndex = 0;
-      setProcessedFiles(prev => 
-        prev.map(file => {
-          if (file.status === 'processing') {
-            const result = results[resultIndex++];
-            
-            // Safety check: if result is undefined, mark as error
-            if (!result) {
-              return {
-                ...file,
-                status: 'error' as const,
-                error: 'No conversion result received',
-                conversionProgress: 100
-              };
-            }
-            
-            // Ensure status is explicitly set based on conversion success
-            const finalStatus = result.status === 'completed' || result.convertedBlob ? 'completed' : 'error';
-            return {
-              ...file, // Keep original file data
-              ...result, // Apply conversion results
-              originalFile: file.originalFile, // Ensure originalFile is preserved
-              status: finalStatus, // Use the final determined status
-              conversionProgress: 100
-            };
-          }
-          return file;
-        })
-      );
     } catch (error) {
-      console.error('Processing failed:', error);
+      console.error('Batch processing failed:', error);
+      // Mark any remaining processing files as error
       setProcessedFiles(prev => 
         prev.map(file => 
           file.status === 'processing'
             ? { 
                 ...file, 
                 status: 'error' as const, 
-                error: 'Processing failed',
-                conversionProgress: 0
+                error: 'Batch processing failed',
+                conversionProgress: 100
               }
             : file
         )
@@ -999,6 +1010,13 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                                 />
                               </Box>
                             )}
+                            {/* PDF Merge Indicator */}
+                            {file.isMergedIntoPdf && (
+                              <Typography variant="caption" component="span" color="primary.main" sx={{ mt: 0.5, display: 'block' }}>
+                                📄 Merged into multi-page PDF (download from first file)
+                              </Typography>
+                            )}
+                            
                             {file.error && (
                               <Typography variant="caption" component="span" color="error" sx={{ mt: 0.5, display: 'block' }}>
                                 ❌ {file.error}

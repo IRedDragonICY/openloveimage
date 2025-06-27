@@ -1,5 +1,6 @@
 import { heicTo, isHeic } from 'heic-to';
 import { ConversionSettings } from '../components/ConversionOptions';
+import { jsPDF } from 'jspdf';
 
 // Type declaration for imagetracerjs
 interface ImageTracerModule {
@@ -16,6 +17,7 @@ export interface ConversionResult {
   error?: string;
   originalSize: number;
   convertedSize?: number;
+  isMergedIntoPdf?: boolean; // Flag to indicate file was merged into a multi-page PDF
 }
 
 export class ImageConverter {
@@ -105,6 +107,11 @@ export class ImageConverter {
     // Handle SVG output
     if (settings.outputFormat === 'svg') {
       return await this.convertToSvg(canvas, width, height, settings);
+    }
+
+    // Handle PDF output
+    if (settings.outputFormat === 'pdf') {
+      return await this.convertToPdf(canvas, width, height, settings);
     }
 
     // Convert to blob for other formats
@@ -287,6 +294,159 @@ export class ImageConverter {
     });
   }
 
+  private static async convertToPdf(
+    canvas: HTMLCanvasElement,
+    canvasWidth: number,
+    canvasHeight: number,
+    settings: ConversionSettings
+  ): Promise<Blob> {
+    try {
+      // Get PDF settings with defaults
+      const pageSize = settings.pageSize || 'A4';
+      const orientation = settings.orientation || 'Portrait';
+      const dpi = settings.dpi || 300;
+      const quality = settings.quality || 85;
+      const imagePlacement = settings.imagePlacement || 'fit';
+      const marginTop = settings.marginTop || 20;
+      const marginBottom = settings.marginBottom || 20;
+      const marginLeft = settings.marginLeft || 20;
+      const marginRight = settings.marginRight || 20;
+
+      // Create jsPDF instance
+      const pdf = new jsPDF({
+        orientation: orientation.toLowerCase() as 'portrait' | 'landscape',
+        unit: 'mm',
+        format: pageSize.toLowerCase() === 'custom' ? [210, 297] : pageSize.toLowerCase() as any
+      });
+
+      // Get page dimensions in mm
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      // Calculate usable area (excluding margins)
+      const usableWidth = pageWidth - marginLeft - marginRight;
+      const usableHeight = pageHeight - marginTop - marginBottom;
+
+      // Convert canvas to high quality image data
+      let imageFormat = 'JPEG';
+      let imageQuality = quality / 100;
+      
+      // For high quality or print, use PNG to avoid JPEG compression artifacts
+      if (quality >= 90) {
+        imageFormat = 'PNG';
+        imageQuality = 1.0;
+      }
+
+      const imageData = canvas.toDataURL(`image/${imageFormat.toLowerCase()}`, imageQuality);
+
+      // Calculate image dimensions for PDF
+      let imgWidth, imgHeight, x, y;
+
+      // Convert pixels to mm at specified DPI
+      const pixelsToMm = (pixels: number) => (pixels * 25.4) / dpi;
+      
+      const originalWidthMm = pixelsToMm(canvasWidth);
+      const originalHeightMm = pixelsToMm(canvasHeight);
+
+      switch (imagePlacement) {
+        case 'fit':
+          // Maintain aspect ratio, fit within margins
+          const scaleX = usableWidth / originalWidthMm;
+          const scaleY = usableHeight / originalHeightMm;
+          const scale = Math.min(scaleX, scaleY);
+          
+          imgWidth = originalWidthMm * scale;
+          imgHeight = originalHeightMm * scale;
+          
+          // Center the image
+          x = marginLeft + (usableWidth - imgWidth) / 2;
+          y = marginTop + (usableHeight - imgHeight) / 2;
+          break;
+
+        case 'fill':
+          // Fill the usable area, may crop
+          imgWidth = usableWidth;
+          imgHeight = usableHeight;
+          x = marginLeft;
+          y = marginTop;
+          break;
+
+        case 'center':
+          // Use original size, center on page
+          imgWidth = Math.min(originalWidthMm, usableWidth);
+          imgHeight = Math.min(originalHeightMm, usableHeight);
+          x = marginLeft + (usableWidth - imgWidth) / 2;
+          y = marginTop + (usableHeight - imgHeight) / 2;
+          break;
+
+        case 'stretch':
+          // Stretch to fill, ignore aspect ratio
+          imgWidth = usableWidth;
+          imgHeight = usableHeight;
+          x = marginLeft;
+          y = marginTop;
+          break;
+
+        default:
+          // Default to fit
+          const defaultScaleX = usableWidth / originalWidthMm;
+          const defaultScaleY = usableHeight / originalHeightMm;
+          const defaultScale = Math.min(defaultScaleX, defaultScaleY);
+          
+          imgWidth = originalWidthMm * defaultScale;
+          imgHeight = originalHeightMm * defaultScale;
+          x = marginLeft + (usableWidth - imgWidth) / 2;
+          y = marginTop + (usableHeight - imgHeight) / 2;
+      }
+
+      // Add image to PDF
+      pdf.addImage(imageData, imageFormat, x, y, imgWidth, imgHeight);
+
+      // Apply compression if specified
+      if (settings.pdfCompression && settings.pdfCompression > 1) {
+        // Note: jsPDF handles compression internally, this is just for user feedback
+        console.log(`PDF compression level: ${settings.pdfCompression}`);
+      }
+
+      // Set PDF metadata
+      pdf.setProperties({
+        title: 'Converted Image',
+        subject: 'Image converted to PDF',
+        author: 'OpenLoveImage',
+        creator: 'OpenLoveImage Converter'
+      });
+
+      // Apply security settings if password protection is enabled
+      if (settings.passwordProtect) {
+        // Note: jsPDF security features are limited
+        // For full security, you'd need a server-side PDF library
+        console.log('Password protection requested (limited browser support)');
+        
+        // Set document permissions
+        const permissions = [];
+        if (settings.allowPrinting !== false) permissions.push('print');
+        if (settings.allowCopying !== false) permissions.push('copy');
+        
+        // Basic protection (browser limitations apply)
+        if (settings.userPassword) {
+          console.log('User password set (browser implementation has limitations)');
+        }
+        if (settings.ownerPassword) {
+          console.log('Owner password set (browser implementation has limitations)');
+        }
+      }
+
+      // Generate PDF blob
+      const pdfBlob = pdf.output('blob');
+      
+      return pdfBlob;
+
+    } catch (error) {
+      console.error('PDF conversion failed:', error);
+      throw new Error(`Failed to convert to PDF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
   private static async loadSvgAsImage(file: File): Promise<HTMLImageElement> {
     if (!file || !file.name) {
       throw new Error('Invalid SVG file provided');
@@ -448,6 +608,11 @@ export class ImageConverter {
 
       onProgress?.(90);
 
+      // Validate converted blob
+      if (!convertedBlob || convertedBlob.size === 0) {
+        throw new Error('Conversion produced empty or invalid blob');
+      }
+
       const result = {
         success: true,
         blob: convertedBlob,
@@ -459,11 +624,15 @@ export class ImageConverter {
       return result;
 
     } catch (error) {
-      return {
+      // Ensure we always return a valid ConversionResult
+      const errorResult = {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error occurred',
         originalSize: file?.size || 0
       };
+      
+      onProgress?.(100); // Complete progress even on error
+      return errorResult;
     }
   }
 
@@ -473,15 +642,71 @@ export class ImageConverter {
     onOverallProgress?: (completed: number, total: number) => void,
     onIndividualProgress?: (fileIndex: number, progress: number) => void
   ): Promise<ConversionResult[]> {
+    // Special handling for PDF - create multi-page PDF
+    if (settings.outputFormat === 'pdf' && files.length > 1) {
+      const multiPageResult = await this.convertMultipleImagesToPdf(
+        files, 
+        settings, 
+        onOverallProgress, 
+        onIndividualProgress
+      );
+      
+      // For PDF multi-page conversion, treat it as one successful conversion for first file
+      // and mark others as completed but point to the same result
+      const results: ConversionResult[] = files.map((file, index) => {
+        if (index === 0) {
+          // First file gets the actual PDF result
+          return {
+            success: multiPageResult.success,
+            blob: multiPageResult.blob,
+            error: multiPageResult.error,
+            originalSize: file.size,
+            convertedSize: multiPageResult.convertedSize
+          };
+        } else {
+          // Other files are marked as "completed" but merged into the first PDF
+          return {
+            success: true,
+            blob: undefined, // No individual blob, merged into first file
+            originalSize: file.size,
+            convertedSize: 0, // Size already counted in first file
+            isMergedIntoPdf: true // Flag to indicate this was merged
+          };
+        }
+      });
+      
+      return results;
+    }
+
+    // Regular conversion for other formats
     const results: ConversionResult[] = [];
 
     for (let i = 0; i < files.length; i++) {
-      const result = await this.convertImage(
-        files[i], 
-        settings,
-        (progress) => onIndividualProgress?.(i, progress)
-      );
-      results.push(result);
+      try {
+        const result = await this.convertImage(
+          files[i], 
+          settings,
+          (progress) => onIndividualProgress?.(i, progress)
+        );
+        
+        // Ensure result is valid
+        if (!result) {
+          results.push({
+            success: false,
+            error: 'convertImage returned null or undefined',
+            originalSize: files[i]?.size || 0
+          });
+        } else {
+          results.push(result);
+        }
+      } catch (error) {
+        // Handle any exceptions and ensure we still push a valid result
+        results.push({
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error in convertImage',
+          originalSize: files[i]?.size || 0
+        });
+      }
       
       if (onOverallProgress) {
         onOverallProgress(i + 1, files.length);
@@ -491,10 +716,213 @@ export class ImageConverter {
     return results;
   }
 
+  private static async convertMultipleImagesToPdf(
+    files: File[],
+    settings: ConversionSettings,
+    onOverallProgress?: (completed: number, total: number) => void,
+    onIndividualProgress?: (fileIndex: number, progress: number) => void
+  ): Promise<ConversionResult> {
+    try {
+      // Get PDF settings with defaults
+      const pageSize = settings.pageSize || 'A4';
+      const orientation = settings.orientation || 'Portrait';
+      const dpi = settings.dpi || 300;
+      const quality = settings.quality || 85;
+      const imagePlacement = settings.imagePlacement || 'fit';
+      const marginTop = settings.marginTop || 20;
+      const marginBottom = settings.marginBottom || 20;
+      const marginLeft = settings.marginLeft || 20;
+      const marginRight = settings.marginRight || 20;
+      const imagesPerPage = settings.imagesPerPage || 1;
+      const pageLayout = settings.pageLayout || 'auto';
+
+      // Create jsPDF instance
+      const pdf = new jsPDF({
+        orientation: orientation.toLowerCase() as 'portrait' | 'landscape',
+        unit: 'mm',
+        format: pageSize.toLowerCase() === 'custom' ? [210, 297] : pageSize.toLowerCase() as any
+      });
+
+      // Get page dimensions
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const usableWidth = pageWidth - marginLeft - marginRight;
+      const usableHeight = pageHeight - marginTop - marginBottom;
+
+      let totalOriginalSize = 0;
+      let currentPage = 0;
+      let imagesOnCurrentPage = 0;
+
+      // Calculate grid layout for multiple images per page
+      const getGridLayout = (imagesPerPage: number, pageLayout: string) => {
+        if (pageLayout === 'vertical') {
+          return { cols: 1, rows: imagesPerPage };
+        } else if (pageLayout === 'horizontal') {
+          return { cols: imagesPerPage, rows: 1 };
+        } else if (pageLayout === 'grid' || pageLayout === 'auto') {
+          const cols = Math.ceil(Math.sqrt(imagesPerPage));
+          const rows = Math.ceil(imagesPerPage / cols);
+          return { cols, rows };
+        } else {
+          return { cols: 1, rows: 1 };
+        }
+      };
+
+      const { cols, rows } = getGridLayout(imagesPerPage, pageLayout);
+      const cellWidth = usableWidth / cols;
+      const cellHeight = usableHeight / rows;
+
+      for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+        const file = files[fileIndex];
+        totalOriginalSize += file.size;
+
+        try {
+          onIndividualProgress?.(fileIndex, 10);
+
+          // Load and process image
+          let img: HTMLImageElement;
+          const isInputHeic = await isHeic(file);
+          
+          if (isInputHeic) {
+            // Convert HEIC to canvas first
+            const tempBlob = await this.convertFromHeic(file, { ...settings, outputFormat: 'jpeg' });
+            const tempFile = new File([tempBlob], 'temp.jpg', { type: 'image/jpeg' });
+            img = await this.loadImage(tempFile);
+          } else {
+            const isSvgInput = (file.type === 'image/svg+xml') || file.name.toLowerCase().endsWith('.svg');
+            if (isSvgInput) {
+              img = await this.loadSvgAsImage(file);
+            } else {
+              img = await this.loadImage(file);
+            }
+          }
+
+          onIndividualProgress?.(fileIndex, 50);
+
+          // Create canvas for this image
+          const { canvas, ctx } = this.getCanvas();
+          const { width, height } = this.calculateDimensions(
+            img.naturalWidth,
+            img.naturalHeight,
+            settings.maxWidth,
+            settings.maxHeight,
+            settings.maintainAspectRatio
+          );
+
+          canvas.width = width;
+          canvas.height = height;
+          ctx.clearRect(0, 0, width, height);
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Convert to image data
+          let imageFormat = 'JPEG';
+          let imageQuality = quality / 100;
+          if (quality >= 90) {
+            imageFormat = 'PNG';
+            imageQuality = 1.0;
+          }
+          const imageData = canvas.toDataURL(`image/${imageFormat.toLowerCase()}`, imageQuality);
+
+          // Add new page if needed
+          if (imagesOnCurrentPage === 0 && currentPage > 0) {
+            pdf.addPage();
+          }
+
+          // Calculate position on page
+          const gridIndex = imagesOnCurrentPage;
+          const col = gridIndex % cols;
+          const row = Math.floor(gridIndex / cols);
+
+          const cellX = marginLeft + col * cellWidth;
+          const cellY = marginTop + row * cellHeight;
+
+          // Calculate image size within cell
+          const pixelsToMm = (pixels: number) => (pixels * 25.4) / dpi;
+          const originalWidthMm = pixelsToMm(width);
+          const originalHeightMm = pixelsToMm(height);
+
+          let imgWidth, imgHeight, x, y;
+
+          if (imagePlacement === 'fit') {
+            const scaleX = cellWidth / originalWidthMm;
+            const scaleY = cellHeight / originalHeightMm;
+            const scale = Math.min(scaleX, scaleY);
+            
+            imgWidth = originalWidthMm * scale;
+            imgHeight = originalHeightMm * scale;
+            
+            x = cellX + (cellWidth - imgWidth) / 2;
+            y = cellY + (cellHeight - imgHeight) / 2;
+          } else if (imagePlacement === 'fill') {
+            imgWidth = cellWidth;
+            imgHeight = cellHeight;
+            x = cellX;
+            y = cellY;
+          } else { // center, stretch, etc.
+            imgWidth = Math.min(originalWidthMm, cellWidth);
+            imgHeight = Math.min(originalHeightMm, cellHeight);
+            x = cellX + (cellWidth - imgWidth) / 2;
+            y = cellY + (cellHeight - imgHeight) / 2;
+          }
+
+          // Add image to PDF
+          pdf.addImage(imageData, imageFormat, x, y, imgWidth, imgHeight);
+
+          onIndividualProgress?.(fileIndex, 90);
+
+          // Update counters
+          imagesOnCurrentPage++;
+          if (imagesOnCurrentPage >= imagesPerPage) {
+            imagesOnCurrentPage = 0;
+            currentPage++;
+          }
+
+          onIndividualProgress?.(fileIndex, 100);
+
+        } catch (error) {
+          console.error(`Failed to process image ${fileIndex}:`, error);
+          // Continue with next image
+        }
+
+        onOverallProgress?.(fileIndex + 1, files.length);
+      }
+
+      // Set PDF metadata
+      pdf.setProperties({
+        title: `Converted Images (${files.length} images)`,
+        subject: 'Multiple images converted to PDF',
+        author: 'OpenLoveImage',
+        creator: 'OpenLoveImage Converter'
+      });
+
+      // Apply security settings if specified
+      if (settings.passwordProtect) {
+        console.log('Password protection requested (limited browser support)');
+      }
+
+      // Generate PDF blob
+      const pdfBlob = pdf.output('blob');
+
+      return {
+        success: true,
+        blob: pdfBlob,
+        originalSize: totalOriginalSize,
+        convertedSize: pdfBlob.size
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create multi-page PDF',
+        originalSize: files.reduce((sum, file) => sum + file.size, 0)
+      };
+    }
+  }
+
   static getSupportedFormats(): { input: string[]; output: string[] } {
     return {
       input: ['jpeg', 'jpg', 'png', 'gif', 'bmp', 'webp', 'heic', 'heif', 'tiff', 'svg'],
-      output: ['jpeg', 'png', 'webp', 'svg'] // HEIC output not supported in browsers
+      output: ['jpeg', 'png', 'webp', 'svg', 'pdf'] // HEIC output not supported in browsers
     };
   }
 

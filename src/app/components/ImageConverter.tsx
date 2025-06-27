@@ -34,17 +34,53 @@ const ImageConverterApp = () => {
   ): Promise<ProcessedFile[]> => {
     const results: ProcessedFile[] = [];
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
-      
-      try {
-        const conversionResult = await Converter.convertImage(
-          file, 
-          conversionSettings,
-          (progress) => onProgress?.(i, progress)
-        );
+    try {
+      // Use batch conversion for multiple files
+      const conversionResults = await Converter.convertMultipleImages(
+        files,
+        conversionSettings,
+        (completed, total) => {
+          // Overall progress can be used if needed
+        },
+        onProgress
+      );
+
+      // Ensure results array length matches files array length
+      if (conversionResults.length !== files.length) {
+        console.error(`Length mismatch: files=${files.length}, results=${conversionResults.length}`);
+        // If there's a mismatch, create error results for all files
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          results.push({
+            id: `${file?.name || 'unknown'}-${i}`,
+            originalFile: file,
+            originalSize: file?.size || 0,
+            status: 'error',
+            error: 'Conversion result length mismatch',
+            outputFormat: conversionSettings.outputFormat,
+          });
+        }
+        return results;
+      }
+
+      // Process the results
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const conversionResult = conversionResults[i];
         
-        if (conversionResult.success && conversionResult.blob) {
+        if (!conversionResult) {
+          results.push({
+            id: `${file?.name || 'unknown'}-${i}`,
+            originalFile: file,
+            originalSize: file?.size || 0,
+            status: 'error',
+            error: 'No conversion result received',
+            outputFormat: conversionSettings.outputFormat,
+          });
+          continue;
+        }
+
+        if (conversionResult.success && (conversionResult.blob || conversionResult.isMergedIntoPdf)) {
           results.push({
             id: `${file?.name || 'unknown'}-${i}`,
             originalFile: file,
@@ -53,6 +89,7 @@ const ImageConverterApp = () => {
             convertedSize: conversionResult.convertedSize || 0,
             status: 'completed',
             outputFormat: conversionSettings.outputFormat,
+            isMergedIntoPdf: conversionResult.isMergedIntoPdf,
           });
         } else {
           results.push({
@@ -64,13 +101,17 @@ const ImageConverterApp = () => {
             outputFormat: conversionSettings.outputFormat,
           });
         }
-      } catch (error) {
+      }
+    } catch (error) {
+      // If batch conversion fails, mark all files as error
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
         results.push({
           id: `${file?.name || 'unknown'}-${i}`,
           originalFile: file,
           originalSize: file?.size || 0,
           status: 'error',
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: error instanceof Error ? error.message : 'Batch conversion failed',
           outputFormat: conversionSettings.outputFormat,
         });
       }
