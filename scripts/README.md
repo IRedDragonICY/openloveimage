@@ -42,6 +42,22 @@ node scripts/workflow-helper.js status    # Show workflow status
 node scripts/workflow-helper.js help      # Show help
 ```
 
+### 🧹 Clean Script (`clean.js`)
+
+Clean build artifacts and directories:
+
+```bash
+npm run clean          # Clean build directories only
+npm run clean:all      # Clean everything including node_modules
+# or
+node scripts/clean.js        # Clean build directories
+node scripts/clean.js --all  # Clean everything
+```
+
+**Cleaned directories:**
+- Build artifacts: `out`, `.next`, `src-tauri/target`, `node_modules/.cache`
+- All (with --all): Above + `node_modules`
+
 ## 🔧 Usage in Package.json
 
 These scripts are integrated into the main package.json:
@@ -53,7 +69,9 @@ These scripts are integrated into the main package.json:
     "version:minor": "npm version minor --no-git-tag-version && npm run version:sync", 
     "version:major": "npm version major --no-git-tag-version && npm run version:sync",
     "version:sync": "node scripts/sync-version.js",
-    "changelog": "node scripts/generate-changelog.js"
+    "changelog": "node scripts/generate-changelog.js",
+    "clean": "node scripts/clean.js",
+    "clean:all": "node scripts/clean.js --all"
   }
 }
 ```
@@ -125,10 +143,10 @@ chmod +x scripts/*.js
 
 ### Dependencies
 
-These scripts use only Node.js built-ins:
-- `fs` - File system operations
+These scripts use only Node.js built-ins (no external dependencies):
+- `fs` - File system operations and directory cleaning
 - `child_process` - Git command execution
-- `path` - Path manipulations
+- `path` - Path manipulations and resolution
 
 ### Git Integration
 

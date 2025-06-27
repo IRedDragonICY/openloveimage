@@ -39,8 +39,8 @@
     "version:major": "npm version major --no-git-tag-version && npm run version:sync",
     "version:sync": "node scripts/sync-version.js",
     "changelog": "node scripts/generate-changelog.js",
-    "clean": "rimraf out .next src-tauri/target node_modules/.cache",
-    "clean:all": "npm run clean && rimraf node_modules",
+    "clean": "node scripts/clean.js",
+    "clean:all": "node scripts/clean.js --all",
     "check": "npm run lint && npm run build",
     "prepare:release": "npm run check && npm run changelog",
     "dev:clean": "npm run clean && npm run dev"
@@ -72,7 +72,6 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.3.4",
-    "rimraf": "^6.0.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

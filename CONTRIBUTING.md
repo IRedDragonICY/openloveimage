@@ -77,7 +77,7 @@ npm run version:major     # Bump major version (X.0.0)
 npm run version:sync      # Sync versions across files
 
 # Maintenance
-npm run clean             # Clean build artifacts
+npm run clean             # Clean build artifacts only
 npm run clean:all         # Clean everything including node_modules
 npm run changelog         # Generate changelog from git history
 ```
