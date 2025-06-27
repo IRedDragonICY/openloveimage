@@ -40,11 +40,13 @@ import {
   ExpandLess,
   Refresh,
   Transform,
+  Crop,
 } from '@mui/icons-material';
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import ImagePreview from './ImagePreview';
 import BeforeAfterPreview from './BeforeAfterPreview';
+import ImageCropEditor from './ImageCropEditor';
 import { heicTo, isHeic } from 'heic-to';
 
 // Helper function to get actual file type including HEIC
@@ -118,6 +120,11 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
   // Before/After preview states
   const [beforeAfterOpen, setBeforeAfterOpen] = useState(false);
   const [beforeAfterFile, setBeforeAfterFile] = useState<ProcessedFile | null>(null);
+
+  // Crop editor states
+  const [cropEditorOpen, setCropEditorOpen] = useState(false);
+  const [currentCropFile, setCurrentCropFile] = useState<{ file: File; index: number } | null>(null);
+  const [croppedFiles, setCroppedFiles] = useState<{ [key: number]: File }>({});
 
   // Simulate upload progress for each file
   const simulateUploadProgress = useCallback(async (file: File, fileIndex: number) => {
@@ -350,6 +357,39 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
     setBeforeAfterFile(null);
   };
 
+  // Crop handlers
+  const handleCropClick = (file: File, index: number) => {
+    setCurrentCropFile({ file, index });
+    setCropEditorOpen(true);
+  };
+
+  const handleCropConfirm = (croppedImageBlob: Blob, settings: any) => {
+    if (currentCropFile) {
+      // Convert blob to file
+      const croppedFile = new File(
+        [croppedImageBlob],
+        `cropped_${currentCropFile.file.name}`,
+        { type: croppedImageBlob.type }
+      );
+      
+      // Store the cropped file
+      setCroppedFiles(prev => ({
+        ...prev,
+        [currentCropFile.index]: croppedFile,
+      }));
+
+      // Generate thumbnail for cropped file
+      generateThumbnails([croppedFile]);
+    }
+    setCropEditorOpen(false);
+    setCurrentCropFile(null);
+  };
+
+  const handleCropClose = () => {
+    setCropEditorOpen(false);
+    setCurrentCropFile(null);
+  };
+
   // Processing functions - Refactored to use individual processing logic
   const handleProcessFiles = async () => {
     // Get indices of pending files
@@ -365,7 +405,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
       // Process each pending file sequentially using the same logic as individual conversion
       for (let i = 0; i < pendingIndices.length; i++) {
         const fileIndex = pendingIndices[i];
-        const targetFile = files[fileIndex];
+        const targetFile = croppedFiles[fileIndex] || files[fileIndex];
         
         if (!targetFile) continue;
 
@@ -463,7 +503,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
 
   // Convert individual file
   const handleProcessSingleFile = async (fileIndex: number) => {
-    const targetFile = files[fileIndex];
+    const targetFile = croppedFiles[fileIndex] || files[fileIndex];
     if (!targetFile) return;
 
     // Update status to processing for this specific file
@@ -901,24 +941,31 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
                           </Avatar>
                         ) : (
                           <Avatar
-                            src={file.originalFile?.name ? thumbnails[file.originalFile.name] : undefined}
+                            src={
+                              croppedFiles[originalIndex] 
+                                ? thumbnails[croppedFiles[originalIndex].name] || (file.originalFile?.name ? thumbnails[file.originalFile.name] : undefined)
+                                : (file.originalFile?.name ? thumbnails[file.originalFile.name] : undefined)
+                            }
                             sx={{ 
                               width: 56, 
                               height: 56, 
                               cursor: 'pointer',
-                              border: '2px solid transparent',
+                              border: croppedFiles[originalIndex] ? '2px solid' : '2px solid transparent',
+                              borderColor: croppedFiles[originalIndex] ? 'success.main' : 'transparent',
                               transition: 'all 0.2s ease',
                               '&:hover': {
                                 transform: 'scale(1.05)',
                                 border: '2px solid',
-                                borderColor: 'primary.main',
+                                borderColor: croppedFiles[originalIndex] ? 'success.dark' : 'primary.main',
                               }
                             }}
-                            onClick={() => file.originalFile && handlePreviewClick(
-                              file.originalFile, 
-                              file.originalFile.name,
-                              false
-                            )}
+                            onClick={() => {
+                              const fileToPreview = croppedFiles[originalIndex] || file.originalFile;
+                              const fileName = croppedFiles[originalIndex]?.name || file.originalFile?.name;
+                              if (fileToPreview && fileName) {
+                                handlePreviewClick(fileToPreview, fileName, false);
+                              }
+                            }}
                           >
                             <ImageIcon />
                           </Avatar>
@@ -942,13 +989,25 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
                             >
                               {file.originalFile?.name || `File ${originalIndex + 1}`}
                             </Typography>
-                            <Chip 
-                              size="small" 
-                              label={`${file.originalFile ? getActualFileType(file.originalFile) : 'File'} → ${file.outputFormat.toUpperCase()}`}
-                              color={file.status === 'completed' ? 'success' : 'primary'} 
-                              variant={file.status === 'completed' ? 'filled' : 'outlined'}
-                              sx={{ fontSize: '0.7rem', height: 20, flexShrink: 0 }}
-                            />
+                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                              <Chip 
+                                size="small" 
+                                label={`${file.originalFile ? getActualFileType(file.originalFile) : 'File'} → ${file.outputFormat.toUpperCase()}`}
+                                color={file.status === 'completed' ? 'success' : 'primary'} 
+                                variant={file.status === 'completed' ? 'filled' : 'outlined'}
+                                sx={{ fontSize: '0.7rem', height: 20, flexShrink: 0 }}
+                              />
+                              {croppedFiles[originalIndex] && (
+                                <Chip 
+                                  size="small" 
+                                  label="CROPPED"
+                                  color="success" 
+                                  variant="filled"
+                                  icon={<Crop />}
+                                  sx={{ fontSize: '0.7rem', height: 20, flexShrink: 0 }}
+                                />
+                              )}
+                            </Box>
                           </Box>
                         }
                         secondary={
@@ -1071,6 +1130,21 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
                           {/* Pending State Actions */}
                           {file.status === 'pending' && (
                             <>
+                              <IconButton 
+                                onClick={() => file.originalFile && handleCropClick(file.originalFile, originalIndex)}
+                                color="secondary"
+                                size="small"
+                                title="Crop image"
+                                sx={{
+                                  bgcolor: croppedFiles[originalIndex] ? 'success.main' : 'secondary.main',
+                                  color: croppedFiles[originalIndex] ? 'success.contrastText' : 'secondary.contrastText',
+                                  '&:hover': { 
+                                    bgcolor: croppedFiles[originalIndex] ? 'success.dark' : 'secondary.dark' 
+                                  }
+                                }}
+                              >
+                                <Crop />
+                              </IconButton>
                               <IconButton 
                                 onClick={() => handleProcessSingleFile(originalIndex)}
                                 color="primary"
@@ -1242,6 +1316,17 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
           outputFormat={beforeAfterFile.outputFormat}
           originalSize={beforeAfterFile.originalSize}
           convertedSize={beforeAfterFile.convertedSize || 0}
+        />
+      )}
+
+      {/* Image Crop Editor Modal */}
+      {currentCropFile && (
+        <ImageCropEditor
+          open={cropEditorOpen}
+          onClose={handleCropClose}
+          onConfirm={handleCropConfirm}
+          imageFile={currentCropFile.file}
+          title={`Crop ${currentCropFile.file.name}`}
         />
       )}
     </Box>

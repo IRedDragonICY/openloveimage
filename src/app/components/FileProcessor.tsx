@@ -29,11 +29,13 @@ import {
   Image as ImageIcon,
   Visibility,
   Compare,
+  Crop,
 } from '@mui/icons-material';
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import ImagePreview from './ImagePreview';
 import BeforeAfterPreview from './BeforeAfterPreview';
+import ImageCropEditor from './ImageCropEditor';
 import { heicTo, isHeic } from 'heic-to';
 
 export interface ProcessedFile {
@@ -71,6 +73,9 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat, conv
   const [beforeAfterFile, setBeforeAfterFile] = useState<ProcessedFile | null>(null);
   const [thumbnails, setThumbnails] = useState<{ [key: string]: string }>({});
   const [loadingThumbnails, setLoadingThumbnails] = useState<{ [key: string]: boolean }>({});
+  const [cropEditorOpen, setCropEditorOpen] = useState(false);
+  const [currentCropFile, setCurrentCropFile] = useState<{ file: File; index: number } | null>(null);
+  const [croppedFiles, setCroppedFiles] = useState<{ [key: number]: File }>({});
   // const [overallProgress, setOverallProgress] = useState(0);
 
   // Helper functions to eliminate code duplication
@@ -227,6 +232,38 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat, conv
     setBeforeAfterFile(null);
   };
 
+  const handleCropClick = (file: File, index: number) => {
+    setCurrentCropFile({ file, index });
+    setCropEditorOpen(true);
+  };
+
+  const handleCropConfirm = (croppedImageBlob: Blob, settings: any) => {
+    if (currentCropFile) {
+      // Convert blob to file
+      const croppedFile = new File(
+        [croppedImageBlob],
+        `cropped_${currentCropFile.file.name}`,
+        { type: croppedImageBlob.type }
+      );
+      
+      // Store the cropped file
+      setCroppedFiles(prev => ({
+        ...prev,
+        [currentCropFile.index]: croppedFile,
+      }));
+
+      // Generate thumbnail for cropped file
+      generateThumbnails([croppedFile]);
+    }
+    setCropEditorOpen(false);
+    setCurrentCropFile(null);
+  };
+
+  const handleCropClose = () => {
+    setCropEditorOpen(false);
+    setCurrentCropFile(null);
+  };
+
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return '0 Bytes';
     const k = 1024;
@@ -251,7 +288,12 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat, conv
         prev.map(file => ({ ...file, status: 'processing' as const }))
       );
 
-      const results = await onProcessFiles(files);
+      // Use cropped files if available, otherwise use original files
+      const filesToProcess = files.map((file, index) => 
+        croppedFiles[index] || file
+      );
+
+      const results = await onProcessFiles(filesToProcess);
       
       setProcessedFiles(results);
     } catch (error) {
@@ -403,14 +445,24 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat, conv
                       </>
                     )}
                     {file.status === 'pending' && (
-                      <IconButton 
-                        onClick={() => onRemoveFile(index)}
-                        color="error"
-                        size="small"
-                        title="Remove file"
-                      >
-                        <Delete />
-                      </IconButton>
+                      <>
+                        <IconButton 
+                          onClick={() => handleCropClick(file.originalFile, index)}
+                          color="primary"
+                          size="small"
+                          title="Crop image"
+                        >
+                          <Crop />
+                        </IconButton>
+                        <IconButton 
+                          onClick={() => onRemoveFile(index)}
+                          color="error"
+                          size="small"
+                          title="Remove file"
+                        >
+                          <Delete />
+                        </IconButton>
+                      </>
                     )}
                   </Box>
                 }
@@ -431,18 +483,22 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat, conv
                     </Avatar>
                   ) : (
                     <Avatar
-                      src={thumbnails[file.originalFile.name]}
+                      src={croppedFiles[index] 
+                        ? thumbnails[croppedFiles[index].name] || thumbnails[file.originalFile.name]
+                        : thumbnails[file.originalFile.name]
+                      }
                       sx={{ 
                         width: 56, 
                         height: 56, 
                         cursor: 'pointer',
+                        border: croppedFiles[index] ? '2px solid #4caf50' : 'none',
                         '&:hover': {
                           opacity: 0.8,
                         }
                       }}
                       onClick={() => handlePreviewClick(
-                        file.originalFile, 
-                        file.originalFile.name,
+                        croppedFiles[index] || file.originalFile, 
+                        croppedFiles[index]?.name || file.originalFile.name,
                         false
                       )}
                     >
@@ -462,6 +518,15 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat, conv
                           color="primary" 
                           variant="outlined" 
                         />
+                        {croppedFiles[index] && (
+                          <Chip 
+                            size="small" 
+                            label="CROPPED" 
+                            color="success" 
+                            variant="filled"
+                            icon={<Crop />}
+                          />
+                        )}
                       </Box>
                     </Typography>
                   }
@@ -529,6 +594,17 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat, conv
           outputFormat={beforeAfterFile.outputFormat}
           originalSize={beforeAfterFile.originalSize}
           convertedSize={beforeAfterFile.convertedSize || 0}
+        />
+      )}
+
+      {/* Image Crop Editor Modal */}
+      {currentCropFile && (
+        <ImageCropEditor
+          open={cropEditorOpen}
+          onClose={handleCropClose}
+          onConfirm={handleCropConfirm}
+          imageFile={currentCropFile.file}
+          title={`Crop ${currentCropFile.file.name}`}
         />
       )}
     </Card>

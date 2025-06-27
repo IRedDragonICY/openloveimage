@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "react-image-crop/dist/ReactCrop.css";
 
 :root {
   --background: #ffffff;
@@ -23,4 +24,97 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Enhanced React Image Crop Styles */
+.ReactCrop {
+  position: relative;
+  display: inline-block;
+  cursor: crosshair;
+  max-width: 100%;
+  background: #000;
+}
+
+.ReactCrop__crop-selection {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate3d(0, 0, 0);
+  box-sizing: border-box;
+  cursor: move;
+  box-shadow: 0 0 0 9999em rgba(0, 0, 0, 0.5);
+  border: 2px solid #ffffff;
+}
+
+.ReactCrop__drag-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: #ffffff;
+  border: 1px solid #000;
+  box-sizing: border-box;
+  outline: 1px solid rgba(255, 255, 255, 0.7);
+}
+
+.ReactCrop__drag-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  background: #000;
+  transform: translate(-50%, -50%);
+}
+
+.ReactCrop__drag-handle--corner-nw {
+  top: -6px;
+  left: -6px;
+  cursor: nw-resize;
+}
+
+.ReactCrop__drag-handle--corner-ne {
+  top: -6px;
+  right: -6px;
+  cursor: ne-resize;
+}
+
+.ReactCrop__drag-handle--corner-sw {
+  bottom: -6px;
+  left: -6px;
+  cursor: sw-resize;
+}
+
+.ReactCrop__drag-handle--corner-se {
+  bottom: -6px;
+  right: -6px;
+  cursor: se-resize;
+}
+
+.ReactCrop__drag-handle--edge-n {
+  top: -6px;
+  left: 50%;
+  transform: translate(-50%, 0);
+  cursor: n-resize;
+}
+
+.ReactCrop__drag-handle--edge-s {
+  bottom: -6px;
+  left: 50%;
+  transform: translate(-50%, 0);
+  cursor: s-resize;
+}
+
+.ReactCrop__drag-handle--edge-e {
+  top: 50%;
+  right: -6px;
+  transform: translate(0, -50%);
+  cursor: e-resize;
+}
+
+.ReactCrop__drag-handle--edge-w {
+  top: 50%;
+  left: -6px;
+  transform: translate(0, -50%);
+  cursor: w-resize;
 }
