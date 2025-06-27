@@ -185,20 +185,88 @@ npm run tauri:build
 - **Auto-Updater**: Automatic updates when new versions are available
 - **No Browser Required**: Runs as a standalone application
 
-## 🚀 Automated Releases
+## 🚀 Release Management
 
-Every commit to the `main` branch automatically triggers a GitHub Actions workflow that:
+OpenLoveImage uses professional release management with automated changelog generation and semantic versioning.
+
+### 📋 Changelog Generation
+Our release process automatically generates changelogs from commit messages:
+
+- **🚨 Breaking Changes**: Major API changes that require user attention
+- **✨ New Features**: New functionality added to the application
+- **🐛 Bug Fixes**: Issues resolved and bugs fixed  
+- **🔧 Improvements**: Performance enhancements and code refactoring
+- **📦 Other Changes**: Documentation, build, and maintenance updates
+
+### 🛠️ Release Scripts
+
+#### Create a Release
+```bash
+# Bump patch version (0.1.0 -> 0.1.1) and build
+./release.ps1 patch
+
+# Bump minor version (0.1.0 -> 0.2.0) and build  
+./release.ps1 minor
+
+# Bump major version (0.1.0 -> 1.0.0) and build
+./release.ps1 major
+
+# Build without version bump
+./release.ps1 -BuildOnly
+```
+
+#### Preview Changelog
+```bash
+# Preview changelog for next release
+./changelog-preview.ps1
+
+# Show all commits as changelog
+./changelog-preview.ps1 -All
+
+# Show changes since specific tag
+./changelog-preview.ps1 -FromTag v0.1.0
+```
+
+#### Commit Helper
+```bash
+# Interactive commit helper for conventional commits
+./commit-helper.ps1
+
+# Quick commit with parameters
+./commit-helper.ps1 -Type feat -Message "add new feature"
+```
+
+### 📝 Conventional Commits
+For better changelog generation, use conventional commit format:
+
+```bash
+feat: add new image format support
+fix(ui): resolve button alignment issue  
+feat!: change API response format (breaking change)
+docs: update installation instructions
+refactor(converter): optimize image processing
+```
+
+**Commit Types:**
+- `feat`: ✨ New features (appears in changelog)
+- `fix`: 🐛 Bug fixes (appears in changelog) 
+- `refactor`: 🔧 Code improvements (appears in changelog)
+- `docs`: 📚 Documentation changes
+- `style`: 💄 Code formatting
+- `test`: 🧪 Testing changes
+- `chore`: 🛠️ Build and maintenance
+
+### 🔄 Auto-Release Process
+1. **Changelog Generation**: Automatically categorizes commits since last release
+2. **Version Bump**: Updates package.json and Tauri config
+3. **Build**: Compiles for all platforms (Windows, Linux, macOS)
+4. **Documentation**: Updates CHANGELOG.md with formatted entries
+5. **Release**: Creates tagged release with generated changelog
 
 ### 📦 Builds for Multiple Platforms
 - **Windows x64**: MSI installer, NSIS setup, and portable ZIP
 - **Linux x64**: AppImage, DEB package, and portable ZIP
 - **macOS**: DMG package for both Intel and Apple Silicon
-
-### 🔄 Auto-Release Process
-1. **Build**: Compiles the application for all platforms
-2. **Package**: Creates installers and portable versions
-3. **Release**: Automatically creates a GitHub release
-4. **Upload**: Uploads all build artifacts to the release
 
 ### 📥 Download Latest Release
 Visit the [Releases page](https://github.com/ireddragonicy/openloveimage/releases) to download the latest version for your platform.
