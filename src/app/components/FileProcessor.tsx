@@ -24,7 +24,7 @@ import {
   Delete,
   Download,
   CheckCircle,
-  Error,
+  Error as ErrorIcon,
   PlayArrow,
   GetApp,
   Image as ImageIcon,
@@ -428,7 +428,7 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat }: Fi
                     <Chip size="small" label="Completed" color="success" icon={<CheckCircle />} />
                   )}
                   {file.status === 'error' && (
-                    <Chip size="small" label="Error" color="error" icon={<Error />} />
+                    <Chip size="small" label="Error" color="error" icon={<ErrorIcon />} />
                   )}
                 </Box>
 

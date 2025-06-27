@@ -29,7 +29,7 @@ import {
   Delete,
   Download,
   CheckCircle,
-  Error,
+  Error as ErrorIcon,
   PlayArrow,
   GetApp,
   Image as ImageIcon,
@@ -49,6 +49,8 @@ import { heicTo, isHeic } from 'heic-to';
 
 // Helper function to get actual file type including HEIC
 const getActualFileType = (file: File): string => {
+  if (!file || !file.name) return 'Unknown';
+  
   const extension = file.name.split('.').pop()?.toLowerCase();
   
   // Handle HEIC files which browsers might not recognize
@@ -73,13 +75,21 @@ export interface ProcessedFile {
   originalSize: number;
   convertedBlob?: Blob;
   convertedSize?: number;
-  status: 'pending' | 'processing' | 'completed' | 'error';
+  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'error';
   error?: string;
   outputFormat: string;
+  // Upload progress tracking
+  uploadProgress?: number; // 0-100
+  uploadSpeed?: number; // bytes per second
+  uploadedSize?: number; // bytes uploaded so far
+  uploadStartTime?: number;
+  // Conversion progress tracking
+  conversionProgress?: number; // 0-100
+  conversionStartTime?: number;
 }
 
 interface UnifiedFileManagerProps {
-  onProcessFiles: (files: File[]) => Promise<ProcessedFile[]>;
+  onProcessFiles: (files: File[], onProgress?: (fileIndex: number, progress: number) => void) => Promise<ProcessedFile[]>;
   outputFormat: string;
 }
 
@@ -90,6 +100,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
   const [thumbnails, setThumbnails] = useState<{ [key: string]: string }>({});
   const [loadingThumbnails, setLoadingThumbnails] = useState<{ [key: string]: boolean }>({});
   const [expandedFiles, setExpandedFiles] = useState(true);
+  const [uploadingFiles, setUploadingFiles] = useState<Set<string>>(new Set());
   
   // Preview states
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -106,12 +117,70 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
   const [beforeAfterOpen, setBeforeAfterOpen] = useState(false);
   const [beforeAfterFile, setBeforeAfterFile] = useState<ProcessedFile | null>(null);
 
+  // Simulate upload progress for each file
+  const simulateUploadProgress = useCallback(async (file: File, fileIndex: number) => {
+    const fileName = file.name;
+    const startTime = Date.now();
+    const fileSize = file.size;
+    const chunkSize = Math.max(fileSize / 20, 1024 * 50); // Simulate chunks
+    let uploadedSize = 0;
+
+    setUploadingFiles(prev => new Set([...prev, fileName]));
+
+    return new Promise<void>((resolve) => {
+      const interval = setInterval(() => {
+        uploadedSize = Math.min(uploadedSize + chunkSize, fileSize);
+        const progress = Math.round((uploadedSize / fileSize) * 100);
+        const elapsed = (Date.now() - startTime) / 1000;
+        const speed = elapsed > 0 ? uploadedSize / elapsed : 0;
+
+        setProcessedFiles(prev => 
+          prev.map((processedFile, index) => 
+            index === fileIndex + files.length 
+              ? {
+                  ...processedFile,
+                  uploadProgress: progress,
+                  uploadSpeed: speed,
+                  uploadedSize: uploadedSize,
+                  uploadStartTime: startTime,
+                  status: progress === 100 ? 'pending' : 'uploading'
+                }
+              : processedFile
+          )
+        );
+
+        if (uploadedSize >= fileSize) {
+          clearInterval(interval);
+          setUploadingFiles(prev => {
+            const newSet = new Set(prev);
+            newSet.delete(fileName);
+            return newSet;
+          });
+          resolve();
+        }
+      }, 100);
+    });
+  }, [files.length]);
+
   // Dropzone setup
-  const onDrop = useCallback((acceptedFiles: File[]) => {
-    const newFiles = [...files, ...acceptedFiles];
+  const onDrop = useCallback(async (acceptedFiles: File[]) => {
+    // Filter out any invalid files
+    const validFiles = acceptedFiles.filter(file => file && file.name && file.size !== undefined);
+    
+    const newFiles = [...files, ...validFiles];
     setFiles(newFiles);
-    generateThumbnails(acceptedFiles);
-  }, [files]);
+    
+    // Start upload simulation for all files in parallel
+    const uploadPromises = validFiles.map((file, index) => 
+      simulateUploadProgress(file, index)
+    );
+    
+    // Generate thumbnails for new files
+    generateThumbnails(validFiles);
+
+    // Wait for all uploads to complete
+    await Promise.all(uploadPromises);
+  }, [files, simulateUploadProgress]);
 
   const { getRootProps, getInputProps, isDragActive, open } = useDropzone({
     onDrop,
@@ -124,13 +193,14 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
 
   // Generate thumbnails for new files
   const generateThumbnails = useCallback(async (fileList: File[]) => {
+    const validFiles = fileList.filter(file => file && file.name);
     const loadingStates: { [key: string]: boolean } = {};
-    fileList.forEach(file => {
+    validFiles.forEach(file => {
       loadingStates[file.name] = true;
     });
     setLoadingThumbnails(prev => ({ ...prev, ...loadingStates }));
 
-    for (const file of fileList) {
+    for (const file of validFiles) {
       try {
         const thumbnail = await createThumbnail(file);
         setThumbnails(prev => ({ ...prev, [file.name]: thumbnail }));
@@ -202,24 +272,28 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
 
   // Update processed files when files or output format changes
   useEffect(() => {
-    const newProcessedFiles: ProcessedFile[] = files.map((file, index) => ({
-      id: `${file.name}-${index}`,
-      originalFile: file,
-      originalSize: file.size,
-      status: 'pending',
-      outputFormat,
-    }));
+    const newProcessedFiles: ProcessedFile[] = files
+      .filter(file => file && file.name) // Filter out any undefined or invalid files
+      .map((file, index) => ({
+        id: `${file.name}-${index}`,
+        originalFile: file,
+        originalSize: file.size,
+        status: 'pending',
+        outputFormat,
+      }));
     setProcessedFiles(newProcessedFiles);
   }, [files, outputFormat]);
 
   // File management functions
   const removeFile = useCallback((index: number) => {
     const fileToRemove = files[index];
+    if (!fileToRemove) return; // Safety check
+    
     const newFiles = files.filter((_, i) => i !== index);
     setFiles(newFiles);
     
     // Clean up thumbnail
-    if (thumbnails[fileToRemove.name]) {
+    if (fileToRemove.name && thumbnails[fileToRemove.name]) {
       URL.revokeObjectURL(thumbnails[fileToRemove.name]);
       setThumbnails(prev => {
         const newThumbnails = { ...prev };
@@ -228,11 +302,13 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
       });
     }
     
-    setLoadingThumbnails(prev => {
-      const newLoading = { ...prev };
-      delete newLoading[fileToRemove.name];
-      return newLoading;
-    });
+    if (fileToRemove.name) {
+      setLoadingThumbnails(prev => {
+        const newLoading = { ...prev };
+        delete newLoading[fileToRemove.name];
+        return newLoading;
+      });
+    }
   }, [files, thumbnails]);
 
   const clearAllFiles = () => {
@@ -287,23 +363,77 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
     setIsProcessing(true);
 
     try {
-      // Only set processing status for pending files
+      // Only set processing status for pending files with initial progress
       setProcessedFiles(prev => 
         prev.map(file => 
           file.status === 'pending' 
-            ? { ...file, status: 'processing' as const, error: undefined }
+            ? { 
+                ...file, 
+                status: 'processing' as const, 
+                error: undefined,
+                conversionProgress: 0,
+                conversionStartTime: Date.now()
+              }
             : file
         )
       );
 
-      const results = await onProcessFiles(pendingFiles);
+      // Create a custom progress handler for individual file progress
+      const handleIndividualProgress = (fileIndex: number, progress: number) => {
+        const actualFileIndex = files.findIndex((_, index) => 
+          processedFiles[index]?.status === 'processing'
+        );
+        
+        if (actualFileIndex !== -1) {
+          setProcessedFiles(prev => 
+            prev.map((file, index) => {
+              const relativeIndex = prev.filter(f => f.status === 'processing').findIndex((_, i) => i === fileIndex);
+              if (file.status === 'processing' && prev.indexOf(file) === actualFileIndex + relativeIndex) {
+                return {
+                  ...file,
+                  conversionProgress: progress
+                };
+              }
+              return file;
+            })
+          );
+        }
+      };
+
+      const results = await onProcessFiles(pendingFiles, handleIndividualProgress);
+      
+      // Validate results array
+      processedFiles.filter(f => f.status === 'processing');
+      if (results.length !== pendingFiles.length) {
+        console.warn(`Results mismatch: expected ${pendingFiles.length} results, got ${results.length}`);
+      }
       
       // Update only the files that were processed
       let resultIndex = 0;
       setProcessedFiles(prev => 
         prev.map(file => {
           if (file.status === 'processing') {
-            return results[resultIndex++];
+            const result = results[resultIndex++];
+            
+            // Safety check: if result is undefined, mark as error
+            if (!result) {
+              return {
+                ...file,
+                status: 'error' as const,
+                error: 'No conversion result received',
+                conversionProgress: 100
+              };
+            }
+            
+            // Ensure status is explicitly set based on conversion success
+            const finalStatus = result.status === 'completed' || result.convertedBlob ? 'completed' : 'error';
+            return {
+              ...file, // Keep original file data
+              ...result, // Apply conversion results
+              originalFile: file.originalFile, // Ensure originalFile is preserved
+              status: finalStatus, // Use the final determined status
+              conversionProgress: 100
+            };
           }
           return file;
         })
@@ -316,7 +446,8 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
             ? { 
                 ...file, 
                 status: 'error' as const, 
-                error: 'Processing failed' 
+                error: 'Processing failed',
+                conversionProgress: 0
               }
             : file
         )
@@ -335,20 +466,63 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
     setProcessedFiles(prev => 
       prev.map((file, index) => 
         index === fileIndex 
-          ? { ...file, status: 'processing' as const, error: undefined }
+          ? { 
+              ...file, 
+              status: 'processing' as const, 
+              error: undefined,
+              conversionProgress: 0,
+              conversionStartTime: Date.now()
+            }
           : file
       )
     );
 
     try {
-      const results = await onProcessFiles([targetFile]);
+      // Create progress handler for this specific file
+      const handleProgress = (fileIdx: number, progress: number) => {
+        setProcessedFiles(prev => 
+          prev.map((file, index) => 
+            index === fileIndex 
+              ? { ...file, conversionProgress: progress }
+              : file
+          )
+        );
+      };
+
+      const results = await onProcessFiles([targetFile], handleProgress);
       const result = results[0];
+      
+      // Validate single result
+      if (!results || results.length === 0) {
+        throw new Error('No conversion results received');
+      }
       
       // Update only this specific file
       setProcessedFiles(prev => 
-        prev.map((file, index) => 
-          index === fileIndex ? result : file
-        )
+        prev.map((file, index) => {
+          if (index === fileIndex) {
+            // Safety check: if result is undefined, mark as error
+            if (!result) {
+              return {
+                ...file,
+                status: 'error' as const,
+                error: 'No conversion result received',
+                conversionProgress: 100
+              };
+            }
+            
+            // Ensure status is explicitly set based on conversion success
+            const finalStatus = result.status === 'completed' || result.convertedBlob ? 'completed' : 'error';
+            return { 
+              ...file, // Keep original file data
+              ...result, // Apply conversion results
+              originalFile: file.originalFile, // Ensure originalFile is preserved
+              status: finalStatus, // Use the final determined status
+              conversionProgress: 100 
+            };
+          }
+          return file;
+        })
       );
     } catch (error) {
       console.error('Single file processing failed:', error);
@@ -358,7 +532,8 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
             ? { 
                 ...file, 
                 status: 'error' as const, 
-                error: 'Processing failed' 
+                error: 'Processing failed',
+                conversionProgress: 0
               }
             : file
         )
@@ -384,7 +559,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
   };
 
   const downloadSingleFile = (processedFile: ProcessedFile) => {
-    if (!processedFile.convertedBlob) return;
+    if (!processedFile.convertedBlob || !processedFile.originalFile) return;
 
     const fileExtension = processedFile.outputFormat === 'jpeg' ? 'jpg' : processedFile.outputFormat;
     const fileName = processedFile.originalFile.name.replace(/\.[^/.]+$/, '') + '.' + fileExtension;
@@ -400,7 +575,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
     const zip = new JSZip();
     
     completedFiles.forEach((file) => {
-      if (file.convertedBlob) {
+      if (file.convertedBlob && file.originalFile && file.originalFile.name) {
         const fileExtension = file.outputFormat === 'jpeg' ? 'jpg' : file.outputFormat;
         const fileName = file.originalFile.name.replace(/\.[^/.]+$/, '') + '.' + fileExtension;
         zip.file(fileName, file.convertedBlob);
@@ -427,11 +602,20 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
 
   // Statistics
   const pendingCount = processedFiles.filter(f => f.status === 'pending').length;
+  const uploadingCount = processedFiles.filter(f => f.status === 'uploading').length;
   const processingCount = processedFiles.filter(f => f.status === 'processing').length;
   const completedCount = processedFiles.filter(f => f.status === 'completed').length;
   const errorCount = processedFiles.filter(f => f.status === 'error').length;
   const totalOriginalSize = processedFiles.reduce((sum, file) => sum + file.originalSize, 0);
   const totalConvertedSize = processedFiles.reduce((sum, file) => sum + (file.convertedSize || 0), 0);
+
+  // Format upload speed
+  const formatSpeed = (bytesPerSecond: number): string => {
+    if (bytesPerSecond === 0) return '0 B/s';
+    const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
+    const i = Math.floor(Math.log(bytesPerSecond) / Math.log(1024));
+    return (bytesPerSecond / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+  };
 
   // Cleanup on unmount
   useEffect(() => {
@@ -564,9 +748,17 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                       variant="outlined"
                     />
                   )}
+                  {uploadingCount > 0 && (
+                    <Chip 
+                      label={`${uploadingCount} uploading`}
+                      color="info"
+                      size="small"
+                      variant="filled"
+                    />
+                  )}
                   {processingCount > 0 && (
                     <Chip 
-                      label={`${processingCount} processing`}
+                      label={`${processingCount} converting`}
                       color="primary"
                       size="small"
                       variant="filled"
@@ -644,7 +836,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
               <Alert 
                 severity={errorCount > 0 ? 'warning' : 'success'} 
                 sx={{ mb: 3, borderRadius: 2 }}
-                icon={errorCount > 0 ? <Error /> : <CheckCircle />}
+                icon={errorCount > 0 ? <ErrorIcon /> : <CheckCircle />}
               >
                 <Box>
                   <Typography variant="body2" component="div" sx={{ fontWeight: 500 }}>
@@ -669,7 +861,11 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
             {/* File List */}
             <Collapse in={expandedFiles}>
               <List sx={{ pt: 0 }}>
-                {processedFiles.map((file, index) => (
+                {processedFiles.map((file, originalIndex) => {
+                  // Skip files with invalid data but don't hide completed conversions
+                  if (!file || !file.id) return null;
+                  
+                  return (
                   <Box key={file.id}>
                     <ListItem 
                       sx={{ 
@@ -679,7 +875,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                       }}
                     >
                       <ListItemAvatar sx={{ minWidth: 72 }}>
-                        {loadingThumbnails[file.originalFile.name] ? (
+                        {file.originalFile?.name && loadingThumbnails[file.originalFile.name] ? (
                           <Avatar
                             sx={{ 
                               width: 56, 
@@ -691,7 +887,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                           </Avatar>
                         ) : (
                           <Avatar
-                            src={thumbnails[file.originalFile.name]}
+                            src={file.originalFile?.name ? thumbnails[file.originalFile.name] : undefined}
                             sx={{ 
                               width: 56, 
                               height: 56, 
@@ -704,7 +900,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                                 borderColor: 'primary.main',
                               }
                             }}
-                            onClick={() => handlePreviewClick(
+                            onClick={() => file.originalFile && handlePreviewClick(
                               file.originalFile, 
                               file.originalFile.name,
                               false
@@ -728,13 +924,13 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                                 whiteSpace: 'nowrap',
                                 flex: 1
                               }}
-                              title={file.originalFile.name}
+                              title={file.originalFile?.name || `File ${originalIndex + 1}`}
                             >
-                              {file.originalFile.name}
+                              {file.originalFile?.name || `File ${originalIndex + 1}`}
                             </Typography>
                             <Chip 
                               size="small" 
-                              label={`${getActualFileType(file.originalFile)} → ${file.outputFormat.toUpperCase()}`}
+                              label={`${file.originalFile ? getActualFileType(file.originalFile) : 'File'} → ${file.outputFormat.toUpperCase()}`}
                               color={file.status === 'completed' ? 'success' : 'primary'} 
                               variant={file.status === 'completed' ? 'filled' : 'outlined'}
                               sx={{ fontSize: '0.7rem', height: 20, flexShrink: 0 }}
@@ -754,6 +950,53 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                                 </>
                               )}
                             </Typography>
+                            
+                            {/* Upload Progress */}
+                            {file.status === 'uploading' && file.uploadProgress !== undefined && (
+                              <Box sx={{ mt: 1 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                  <Typography variant="caption" color="info.main">
+                                    Uploading: {file.uploadProgress}%
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {file.uploadSpeed ? formatSpeed(file.uploadSpeed) : '0 B/s'}
+                                  </Typography>
+                                </Box>
+                                <LinearProgress 
+                                  variant="determinate" 
+                                  value={file.uploadProgress} 
+                                  color="info"
+                                  sx={{ height: 4, borderRadius: 2 }}
+                                />
+                                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                                  {file.uploadedSize ? formatFileSize(file.uploadedSize) : '0 B'} / {formatFileSize(file.originalSize)}
+                                </Typography>
+                              </Box>
+                            )}
+
+                            {/* Conversion Progress */}
+                            {file.status === 'processing' && file.conversionProgress !== undefined && (
+                              <Box sx={{ mt: 1 }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                  <Typography variant="caption" color="primary.main">
+                                    Converting: {file.conversionProgress}%
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {file.conversionStartTime ? 
+                                      `${Math.round((Date.now() - file.conversionStartTime) / 1000)}s` : 
+                                      '0s'
+                                    }
+                                  </Typography>
+                                </Box>
+                                <LinearProgress 
+                                  variant="determinate" 
+                                  value={file.conversionProgress} 
+                                  color="primary"
+                                  sx={{ height: 4, borderRadius: 2 }}
+                                />
+                              </Box>
+                            )}
+
                             {file.convertedSize && (
                               <Box sx={{ mt: 0.5 }}>
                                 <Chip 
@@ -788,14 +1031,17 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                           {file.status === 'pending' && (
                             <Chip size="small" label="Pending" color="default" />
                           )}
+                          {file.status === 'uploading' && (
+                            <Chip size="small" label="Uploading" color="info" icon={<CloudUpload />} />
+                          )}
                           {file.status === 'processing' && (
-                            <Chip size="small" label="Processing" color="primary" />
+                            <Chip size="small" label="Converting" color="primary" icon={<Transform />} />
                           )}
                           {file.status === 'completed' && (
                             <Chip size="small" label="Completed" color="success" icon={<CheckCircle />} />
                           )}
                           {file.status === 'error' && (
-                            <Chip size="small" label="Error" color="error" icon={<Error />} />
+                            <Chip size="small" label="Error" color="error" icon={<ErrorIcon />} />
                           )}
                         </Box>
 
@@ -805,7 +1051,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                           {file.status === 'pending' && (
                             <>
                               <IconButton 
-                                onClick={() => handleProcessSingleFile(index)}
+                                onClick={() => handleProcessSingleFile(originalIndex)}
                                 color="primary"
                                 size="small"
                                 title="Convert this file"
@@ -818,7 +1064,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                                 <Transform />
                               </IconButton>
                               <IconButton 
-                                onClick={() => removeFile(index)}
+                                onClick={() => removeFile(originalIndex)}
                                 color="error"
                                 size="small"
                                 title="Remove file"
@@ -830,6 +1076,13 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                                 <Delete />
                               </IconButton>
                             </>
+                          )}
+
+                          {/* Uploading State */}
+                          {file.status === 'uploading' && (
+                            <Box sx={{ p: 1, display: 'flex', alignItems: 'center' }}>
+                              <CircularProgress size={16} thickness={4} color="info" />
+                            </Box>
                           )}
 
                           {/* Processing State */}
@@ -855,7 +1108,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                                 <Compare />
                               </IconButton>
                               <IconButton 
-                                onClick={() => handlePreviewClick(
+                                onClick={() => file.originalFile && handlePreviewClick(
                                   file.convertedBlob!,
                                   file.originalFile.name.replace(/\.[^/.]+$/, '') + '.' + (file.outputFormat === 'jpeg' ? 'jpg' : file.outputFormat),
                                   true,
@@ -887,7 +1140,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                                 <Download />
                               </IconButton>
                               <IconButton 
-                                onClick={() => handleResetFile(index)}
+                                onClick={() => handleResetFile(originalIndex)}
                                 color="warning"
                                 size="small"
                                 title="Convert again with different settings"
@@ -905,7 +1158,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                           {file.status === 'error' && (
                             <>
                               <IconButton 
-                                onClick={() => handleProcessSingleFile(index)}
+                                onClick={() => handleProcessSingleFile(originalIndex)}
                                 color="primary"
                                 size="small"
                                 title="Retry conversion"
@@ -918,7 +1171,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                                 <Refresh />
                               </IconButton>
                               <IconButton 
-                                onClick={() => removeFile(index)}
+                                onClick={() => removeFile(originalIndex)}
                                 color="error"
                                 size="small"
                                 title="Remove file"
@@ -934,9 +1187,10 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
                         </Stack>
                       </Box>
                     </ListItem>
-                    {index < processedFiles.length - 1 && <Divider sx={{ my: 1 }} />}
+                    {originalIndex < processedFiles.length - 1 && <Divider sx={{ my: 1 }} />}
                   </Box>
-                ))}
+                  );
+                }).filter(Boolean)}
               </List>
             </Collapse>
           </CardContent>
@@ -957,7 +1211,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat }: UnifiedFileManager
         />
       )}
 
-      {beforeAfterFile && beforeAfterFile.convertedBlob && (
+      {beforeAfterFile && beforeAfterFile.convertedBlob && beforeAfterFile.originalFile && (
         <BeforeAfterPreview
           originalFile={beforeAfterFile.originalFile}
           convertedFile={beforeAfterFile.convertedBlob}

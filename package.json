@@ -12,7 +12,14 @@
     "url": "https://github.com/ireddragonicy/openloveimage/issues"
   },
   "author": "ireddragonicy",
-  "keywords": ["image-converter", "heic", "nextjs", "react", "typescript", "material-ui"],
+  "keywords": [
+    "image-converter",
+    "heic",
+    "nextjs",
+    "react",
+    "typescript",
+    "material-ui"
+  ],
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
@@ -28,6 +35,7 @@
     "@mui/system": "^7.1.1",
     "file-saver": "^2.0.5",
     "heic-to": "^1.1.14",
+    "imagetracerjs": "^1.2.6",
     "jszip": "^3.10.1",
     "next": "15.3.4",
     "react": "^19.0.0",

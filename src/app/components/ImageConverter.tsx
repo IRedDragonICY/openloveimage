@@ -13,20 +13,40 @@ const ImageConverterApp = () => {
     maintainAspectRatio: true,
     removeMetadata: false,
     compressionLevel: 5,
+    
+    // Format-specific defaults
+    progressive: false,
+    optimizeHuffman: false,
+    bitDepth: 8,
+    colorType: 'rgba',
+    lossless: false,
+    method: 4,
+    vectorColors: 16,
+    pathPrecision: 1.0,
+    smoothing: 1.0,
+    simplification: 1.0,
+    vectorQuality: 'balanced',
   });
 
-  const handleProcessFiles = useCallback(async (files: File[]): Promise<ProcessedFile[]> => {
+  const handleProcessFiles = useCallback(async (
+    files: File[],
+    onProgress?: (fileIndex: number, progress: number) => void
+  ): Promise<ProcessedFile[]> => {
     const results: ProcessedFile[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       
       try {
-        const conversionResult = await Converter.convertImage(file, conversionSettings);
+        const conversionResult = await Converter.convertImage(
+          file, 
+          conversionSettings,
+          (progress) => onProgress?.(i, progress)
+        );
         
         if (conversionResult.success && conversionResult.blob) {
           results.push({
-            id: `${file.name}-${i}`,
+            id: `${file?.name || 'unknown'}-${i}`,
             originalFile: file,
             originalSize: conversionResult.originalSize,
             convertedBlob: conversionResult.blob,
@@ -36,7 +56,7 @@ const ImageConverterApp = () => {
           });
         } else {
           results.push({
-            id: `${file.name}-${i}`,
+            id: `${file?.name || 'unknown'}-${i}`,
             originalFile: file,
             originalSize: conversionResult.originalSize,
             status: 'error',
@@ -46,9 +66,9 @@ const ImageConverterApp = () => {
         }
       } catch (error) {
         results.push({
-          id: `${file.name}-${i}`,
+          id: `${file?.name || 'unknown'}-${i}`,
           originalFile: file,
-          originalSize: file.size,
+          originalSize: file?.size || 0,
           status: 'error',
           error: error instanceof Error ? error.message : 'Unknown error',
           outputFormat: conversionSettings.outputFormat,
@@ -172,7 +192,7 @@ const ImageConverterApp = () => {
               <strong>Input:</strong> HEIC, HEIF, JPEG, JPG, PNG, WebP, GIF, BMP, TIFF, SVG
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              <strong>Output:</strong> JPEG, PNG, WebP (HEIC output not supported in browsers)
+              <strong>Output:</strong> JPEG, PNG, WebP, SVG (HEIC output not supported in browsers)
             </Typography>
           </Stack>
         </Box>
