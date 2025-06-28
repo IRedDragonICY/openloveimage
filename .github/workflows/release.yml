@@ -47,32 +47,8 @@ jobs:
             echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
             echo "should-release=true" >> $GITHUB_OUTPUT
           else
-            # Auto increment patch version
-            IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
-            MAJOR=${VERSION_PARTS[0]}
-            MINOR=${VERSION_PARTS[1]}
-            PATCH=${VERSION_PARTS[2]}
-            NEW_PATCH=$((PATCH + 1))
-            NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-            NEW_TAG="v$NEW_VERSION"
-            
-            echo "Auto incrementing version to: $NEW_VERSION"
-            echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
-            echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
-            echo "should-release=true" >> $GITHUB_OUTPUT
-            
-            # Update package.json
-            npm version $NEW_VERSION --no-git-tag-version
-            
-            # Update tauri.conf.json
-            sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" src-tauri/tauri.conf.json
-            
-            # Commit version bump
-            git config --local user.email "action@github.com"
-            git config --local user.name "GitHub Action"
-            git add package.json src-tauri/tauri.conf.json
-            git commit -m "🔖 Bump version to $NEW_VERSION [skip ci]"
-            git push
+            echo "No version change detected, skipping release"
+            echo "should-release=false" >> $GITHUB_OUTPUT
           fi
 
       - name: 📝 Generate Changelog
@@ -90,53 +66,55 @@ jobs:
             COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
           fi
           
-          # Generate changelog with modern formatting
-          cat > changelog_temp.md << 'EOL'
-          ## 🎉 What's New in v${{ steps.version.outputs.version }}
-
-          ### ✨ Features & Improvements
-          $COMMITS
-
-          ### 🔧 Technical Details
-          - **Platform Support**: Windows, macOS, Linux
-          - **Architecture**: x64, Universal (macOS)
-          - **Built with**: Tauri v2, Next.js 15, React 19
-          - **Security**: All processing done locally, no data leaves your device
-
-          ### 📦 Download Options
-          Choose the appropriate file for your operating system:
+          # Create changelog with proper variable substitution
+          VERSION="${{ steps.version.outputs.version }}"
           
-          #### Windows
-          - **`.msi`** - Windows Installer (recommended for most users)
-          - **`.exe`** - NSIS Setup Executable  
-          - **`.zip`** - Portable ZIP (no installation required)
-          
-          #### macOS
-          - **`.dmg`** - Universal DMG (Intel & Apple Silicon)
-          
-          #### Linux
-          - **`.AppImage`** - Portable Application Image
-          - **`.deb`** - Debian/Ubuntu Package
-          - **`.zip`** - Portable ZIP (extract and run)
+          cat > changelog_temp.md << EOF
+## 🎉 What's New in v${VERSION}
 
-          ### 🚀 Installation Instructions
+### ✨ Features & Improvements
+${COMMITS}
 
-          **Windows:**
-          1. **Installer**: Download `.msi` file and run installer
-          2. **Portable**: Download `.zip`, extract, and run `OpenLoveImage.exe`
+### 🔧 Technical Details
+- **Platform Support**: Windows, macOS, Linux
+- **Architecture**: x64, Universal (macOS)
+- **Built with**: Tauri v2, Next.js 15, React 19
+- **Security**: All processing done locally, no data leaves your device
 
-          **macOS:**
-          1. Download `.dmg` file
-          2. Open DMG and drag app to Applications folder
+### 📦 Download Options
+Choose the appropriate file for your operating system:
 
-          **Linux:**
-          1. **AppImage**: Download, make executable (`chmod +x`), and run
-          2. **DEB**: Install with `sudo dpkg -i package.deb`
-          3. **Portable**: Download `.zip`, extract, and run executable
+#### Windows
+- **\`.msi\`** - Windows Installer (recommended for most users)
+- **\`.exe\`** - NSIS Setup Executable  
+- **\`.zip\`** - Portable ZIP (no installation required)
 
-          ---
-          *Built with ❤️ using Tauri & Next.js*
-          EOL
+#### macOS
+- **\`.dmg\`** - Universal DMG (Intel & Apple Silicon)
+
+#### Linux
+- **\`.AppImage\`** - Portable Application Image
+- **\`.deb\`** - Debian/Ubuntu Package
+- **\`.zip\`** - Portable ZIP (extract and run)
+
+### 🚀 Installation Instructions
+
+**Windows:**
+1. **Installer**: Download \`.msi\` file and run installer
+2. **Portable**: Download \`.zip\`, extract, and run \`OpenLoveImage.exe\`
+
+**macOS:**
+1. Download \`.dmg\` file
+2. Open DMG and drag app to Applications folder
+
+**Linux:**
+1. **AppImage**: Download, make executable (\`chmod +x\`), and run
+2. **DEB**: Install with \`sudo dpkg -i package.deb\`
+3. **Portable**: Download \`.zip\`, extract, and run executable
+
+---
+*Built with ❤️ using Tauri & Next.js*
+EOF
           
           # Use heredoc for multiline output without escaping issues
           {
