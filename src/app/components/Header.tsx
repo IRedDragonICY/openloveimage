@@ -32,7 +32,7 @@ const Header = () => {
           <Button
             color="inherit"
             startIcon={<GitHub />}
-            href="https://github.com"
+            href="https://github.com/ireddragonicy/openloveimage"
             target="_blank"
             sx={{ textTransform: 'none' }}
           >
