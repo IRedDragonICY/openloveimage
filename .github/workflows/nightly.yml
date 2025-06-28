@@ -17,6 +17,12 @@ on:
         default: 'windows,linux,macos'
         type: string
 
+permissions:
+  contents: write
+  actions: write
+  packages: write
+  deployments: write
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -263,38 +269,38 @@ jobs:
           
           # Create changelog with proper variable substitution
           cat > nightly_changelog_temp.md << EOF
-## 🌙 OpenLoveImage Nightly Build
+          ## 🌙 OpenLoveImage Nightly Build
 
-**Version**: \`${NIGHTLY_VERSION}\`  
-**Build Date**: $(date -u +'%Y-%m-%d %H:%M UTC')  
-**Commit**: \`${{ github.sha }}\`  
-**Commits since last nightly**: ${{ needs.check-changes.outputs.commit-count }}
+          **Version**: \`${NIGHTLY_VERSION}\`
+          **Build Date**: $(date -u +'%Y-%m-%d %H:%M UTC')
+          **Commit**: \`${{ github.sha }}\`
+          **Commits since last nightly**: ${{ needs.check-changes.outputs.commit-count }}
 
-### ⚠️ Nightly Build Warning
-This is an automated nightly build for testing purposes. It may contain:
-- Unstable features
-- Known bugs
-- Breaking changes
-- Incomplete functionality
+          ### ⚠️ Nightly Build Warning
+          This is an automated nightly build for testing purposes. It may contain:
+          - Unstable features
+          - Known bugs
+          - Breaking changes
+          - Incomplete functionality
 
-**Not recommended for production use!**
+          **Not recommended for production use!**
 
-### 📝 Recent Changes
-${COMMITS}
+          ### 📝 Recent Changes
+          ${COMMITS}
 
-### 📦 Available Downloads
-- **Windows**: \`.msi\` installer and \`.exe\` portable
-- **macOS**: \`.dmg\` universal (Intel + Apple Silicon)
-- **Linux**: \`.AppImage\` portable and \`.deb\` package
+          ### 📦 Available Downloads
+          - **Windows**: .msi installer and .exe portable
+          - **macOS**: .dmg universal (Intel + Apple Silicon)
+          - **Linux**: .AppImage portable and .deb package
 
-### 🚀 Quick Install
-1. Download the appropriate file for your OS
-2. Install or run as usual
-3. Report issues on our [GitHub Issues](https://github.com/${{ github.repository }}/issues)
+          ### 🚀 Quick Install
+          1. Download the appropriate file for your OS
+          2. Install or run as usual
+          3. Report issues on our GitHub Issues
 
----
-*This nightly build expires in 30 days and will be automatically deleted.*
-EOF
+          ---
+          *This nightly build expires in 30 days and will be automatically deleted.*
+          EOF
           
           # Use heredoc for multiline output without escaping issues
           {
@@ -330,32 +336,27 @@ EOF
         uses: actions/github-script@v7
         with:
           script: |
-            // Get all releases
             const releases = await github.rest.repos.listReleases({
               owner: context.repo.owner,
               repo: context.repo.repo,
               per_page: 100
             });
             
-            // Filter nightly releases
             const nightlyReleases = releases.data
               .filter(release => release.tag_name.startsWith('nightly-'))
               .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
             
-            // Keep only the 5 most recent nightly releases
             const releasesToDelete = nightlyReleases.slice(5);
             
             for (const release of releasesToDelete) {
               console.log(`Deleting old nightly release: ${release.tag_name}`);
               
-              // Delete the release
               await github.rest.repos.deleteRelease({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 release_id: release.id
               });
               
-              // Delete the tag
               try {
                 await github.rest.git.deleteRef({
                   owner: context.repo.owner,
