@@ -45,17 +45,35 @@ jobs:
           # Remove 'v' prefix if exists
           LAST_VERSION=${LAST_TAG#v}
           
-          # Compare versions
-          if [ "$CURRENT_VERSION" != "$LAST_VERSION" ]; then
-            NEW_TAG="v$CURRENT_VERSION"
-            echo "New release needed: $NEW_TAG"
-            echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
-            echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
-            echo "should-release=true" >> $GITHUB_OUTPUT
-          else
-            echo "No version change detected, skipping release"
-            echo "should-release=false" >> $GITHUB_OUTPUT
-          fi
+          # Always create release by auto-incrementing patch version
+          IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+          MAJOR=${VERSION_PARTS[0]}
+          MINOR=${VERSION_PARTS[1]}
+          PATCH=${VERSION_PARTS[2]}
+          NEW_PATCH=$((PATCH + 1))
+          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
+          NEW_TAG="v$NEW_VERSION"
+          
+          echo "Auto incrementing version to: $NEW_VERSION"
+          echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "should-release=true" >> $GITHUB_OUTPUT
+          
+          # Update package.json
+          npm version $NEW_VERSION --no-git-tag-version
+          
+          # Update tauri.conf.json
+          sed -i "s/\"version\": \".*\"/\"version\": \"$NEW_VERSION\"/" src-tauri/tauri.conf.json
+          
+          # Update Cargo.toml
+          sed -i "s/version = \".*\"/version = \"$NEW_VERSION\"/" src-tauri/Cargo.toml
+          
+          # Commit version bump
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml
+          git commit -m "🔖 Bump version to $NEW_VERSION [skip ci]"
+          git push
 
       - name: 📝 Generate Changelog
         id: changelog
