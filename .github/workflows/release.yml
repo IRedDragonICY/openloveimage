@@ -90,136 +90,96 @@ jobs:
             COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
           fi
           
-          # Create changelog with proper variable substitution
+          # Create changelog content safely without YAML conflicts
           VERSION="${{ steps.version.outputs.version }}"
+          RELEASE_DATE=$(date +"%Y-%m-%d")
+          COMMIT_HASH=$(git rev-parse --short HEAD)
           
-          cat > changelog_temp.md << 'CHANGELOG_EOF'
-## 🚀 OpenLoveImage v${VERSION} - Production Release
-
-### 📋 Release Summary
-**Release Date**: $(date +"%Y-%m-%d")  
-**Build Target**: Multi-platform (Windows x64, macOS Universal, Linux x64)  
-**Stability**: Production Ready  
-**Security**: Local Processing Only - Zero Data Transmission  
-
-### 🔥 Key Improvements & Features
-${COMMITS}
-
-### 🛠️ Technical Specifications
-- **Framework**: Tauri v2.0 + Next.js 15 + React 19
-- **Backend**: Rust with native image processing
-- **Frontend**: TypeScript with modern React hooks
-- **Bundle Size**: Optimized for fast startup (< 50MB)
-- **Performance**: Hardware-accelerated image processing
-- **Memory**: Efficient streaming for large files (supports GB+ images)
-- **Platforms**: Cross-platform native binaries
-
-### 🔒 Security & Privacy Features
-- **Local Processing**: All image conversion happens on your device
-- **No Telemetry**: Zero data collection or analytics
-- **No Network**: Offline-first design, no internet required
-- **Sandboxed**: Tauri security model with minimal system access
-- **Code Verification**: Signed binaries for Windows and macOS
-
-### 📦 Installation Packages
-
-#### 🪟 Windows (x64)
-| Package Type | File Extension | Best For | Size |
-|-------------|---------------|----------|------|
-| **Windows Installer** | `.msi` | System-wide installation, Start menu integration | ~45MB |
-| **Setup Executable** | `.exe` | Quick installation with auto-updater | ~42MB |
-| **Portable Archive** | `.zip` | No installation, run from any folder | ~40MB |
-
-#### 🍎 macOS (Universal Binary)
-| Package Type | File Extension | Compatibility | Size |
-|-------------|---------------|---------------|------|
-| **Disk Image** | `.dmg` | Intel + Apple Silicon, drag-to-install | ~35MB |
-| **Portable Archive** | `.zip` | Universal binary, direct execution | ~32MB |
-
-#### 🐧 Linux (x64)
-| Package Type | File Extension | Distribution | Size |
-|-------------|---------------|--------------|------|
-| **AppImage** | `.AppImage` | Universal Linux, portable | ~38MB |
-| **Debian Package** | `.deb` | Ubuntu/Debian/Mint | ~35MB |
-| **Portable Archive** | `.zip` | Any distribution, manual setup | ~33MB |
-
-### 🚀 Quick Installation Guide
-
-#### Windows Installation
-```powershell
-# Option 1: Windows Installer (Recommended)
-# Download: OpenLoveImage-v${VERSION}-Windows-x64.msi
-# Double-click to install, then find in Start Menu
-
-# Option 2: Portable Version
-# Download: OpenLoveImage-v${VERSION}-Windows-x64-Portable.zip
-# Extract and run OpenLoveImage.exe
-```
-
-#### macOS Installation
-```bash
-# Option 1: DMG Installation (Recommended)
-# Download: OpenLoveImage-v${VERSION}-macOS-Universal.dmg
-# Open DMG and drag to Applications folder
-
-# Option 2: Direct Run
-# Download: OpenLoveImage-v${VERSION}-macOS-Universal-Portable.zip
-# Extract and double-click the .app file
-```
-
-#### Linux Installation
-```bash
-# Option 1: AppImage (Universal)
-wget [AppImage-URL]
-chmod +x OpenLoveImage-v${VERSION}-Linux-x64.AppImage
-./OpenLoveImage-v${VERSION}-Linux-x64.AppImage
-
-# Option 2: Debian/Ubuntu Package
-wget [DEB-URL]
-sudo dpkg -i OpenLoveImage-v${VERSION}-Linux-x64.deb
-sudo apt-get install -f  # Fix dependencies if needed
-
-# Option 3: Portable Version
-wget [ZIP-URL]
-unzip OpenLoveImage-v${VERSION}-Linux-x64-Portable.zip
-cd linux-portable && ./run.sh
-```
-
-### 🔧 System Requirements
-
-#### Minimum Requirements
-- **OS**: Windows 10 (1903+), macOS 10.15+, Linux (glibc 2.27+)
-- **RAM**: 4GB (8GB recommended for large images)
-- **Storage**: 100MB free space
-- **CPU**: x64 architecture (Intel/AMD/Apple Silicon)
-
-#### Optimal Performance
-- **RAM**: 16GB+ for batch processing
-- **Storage**: SSD for faster file operations
-- **CPU**: Multi-core processor for parallel processing
-
-### 🐛 Known Issues & Limitations
-- Large HEIC files (>100MB) may require additional processing time
-- Batch processing UI may lag with 500+ files (processing continues normally)
-- macOS Gatekeeper may require manual approval on first launch
-
-### 📞 Support & Documentation
-- **Issues**: Report bugs at [GitHub Issues](https://github.com/ireddragonicy/openloveimage/issues)
-- **Documentation**: Full guides at [GitHub Wiki](https://github.com/ireddragonicy/openloveimage/wiki)
-- **Discussions**: Community support at [GitHub Discussions](https://github.com/ireddragonicy/openloveimage/discussions)
-- **Email**: Technical support available for enterprise users
-
-### 🔄 Upgrade Notes
-- **From v1.x**: Settings will be automatically migrated
-- **Clean Install**: Recommended for major version upgrades
-- **Portable Users**: Simply replace the executable
-
----
-**Build Info**: Compiled on $(date +"%Y-%m-%d %H:%M:%S UTC") | Commit: $(git rev-parse --short HEAD) | CI/CD: GitHub Actions  
-**Verification**: All binaries are signed and checksummed for integrity  
-**License**: MIT License | **Made with**: ❤️ + ☕ + Rust + TypeScript
-
-CHANGELOG_EOF
+          # Build changelog step by step to avoid YAML parsing issues
+          echo "## 🚀 OpenLoveImage v${VERSION} - Production Release" > changelog_temp.md
+          echo "" >> changelog_temp.md
+          echo "### 📋 Release Summary" >> changelog_temp.md
+          echo "**Release Date**: ${RELEASE_DATE}" >> changelog_temp.md
+          echo "**Build Target**: Multi-platform (Windows x64, macOS Universal, Linux x64)" >> changelog_temp.md
+          echo "**Stability**: Production Ready" >> changelog_temp.md
+          echo "**Security**: Local Processing Only - Zero Data Transmission" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          
+          echo "### 🔥 Key Improvements & Features" >> changelog_temp.md
+          echo "${COMMITS}" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          
+          echo "### 🛠️ Technical Specifications" >> changelog_temp.md
+          echo "- **Framework**: Tauri v2.0 + Next.js 15 + React 19" >> changelog_temp.md
+          echo "- **Backend**: Rust with native image processing" >> changelog_temp.md
+          echo "- **Frontend**: TypeScript with modern React hooks" >> changelog_temp.md
+          echo "- **Bundle Size**: Optimized for fast startup (< 50MB)" >> changelog_temp.md
+          echo "- **Performance**: Hardware-accelerated image processing" >> changelog_temp.md
+          echo "- **Memory**: Efficient streaming for large files (supports GB+ images)" >> changelog_temp.md
+          echo "- **Platforms**: Cross-platform native binaries" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          
+          echo "### 🔒 Security & Privacy Features" >> changelog_temp.md
+          echo "- **Local Processing**: All image conversion happens on your device" >> changelog_temp.md
+          echo "- **No Telemetry**: Zero data collection or analytics" >> changelog_temp.md
+          echo "- **No Network**: Offline-first design, no internet required" >> changelog_temp.md
+          echo "- **Sandboxed**: Tauri security model with minimal system access" >> changelog_temp.md
+          echo "- **Code Verification**: Signed binaries for Windows and macOS" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          
+          echo "### 📦 Installation Packages" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          echo "#### 🪟 Windows (x64)" >> changelog_temp.md
+          echo "- **MSI Installer** - System-wide installation, Start menu integration (~45MB)" >> changelog_temp.md
+          echo "- **EXE Setup** - Quick installation with auto-updater (~42MB)" >> changelog_temp.md
+          echo "- **Portable ZIP** - No installation, run from any folder (~40MB)" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          
+          echo "#### 🍎 macOS (Universal Binary)" >> changelog_temp.md
+          echo "- **DMG Image** - Intel + Apple Silicon, drag-to-install (~35MB)" >> changelog_temp.md
+          echo "- **Portable ZIP** - Universal binary, direct execution (~32MB)" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          
+          echo "#### 🐧 Linux (x64)" >> changelog_temp.md
+          echo "- **AppImage** - Universal Linux, portable (~38MB)" >> changelog_temp.md
+          echo "- **DEB Package** - Ubuntu/Debian/Mint (~35MB)" >> changelog_temp.md
+          echo "- **Portable ZIP** - Any distribution, manual setup (~33MB)" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          
+          echo "### 🚀 Quick Installation Guide" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          echo "#### Windows" >> changelog_temp.md
+          echo "1. **Installer**: Download MSI file and run installer" >> changelog_temp.md
+          echo "2. **Portable**: Download ZIP, extract, and run OpenLoveImage.exe" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          
+          echo "#### macOS" >> changelog_temp.md
+          echo "1. **DMG**: Download, open DMG and drag app to Applications" >> changelog_temp.md
+          echo "2. **Portable**: Download ZIP, extract, and double-click the app" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          
+          echo "#### Linux" >> changelog_temp.md
+          echo "1. **AppImage**: Download, make executable (chmod +x), and run" >> changelog_temp.md
+          echo "2. **DEB**: Install with 'sudo dpkg -i package.deb'" >> changelog_temp.md
+          echo "3. **Portable**: Download ZIP, extract, and run executable" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          
+          echo "### 🔧 System Requirements" >> changelog_temp.md
+          echo "- **OS**: Windows 10+, macOS 10.15+, Linux (glibc 2.27+)" >> changelog_temp.md
+          echo "- **RAM**: 4GB minimum, 8GB recommended for large images" >> changelog_temp.md
+          echo "- **Storage**: 100MB free space" >> changelog_temp.md
+          echo "- **CPU**: x64 architecture (Intel/AMD/Apple Silicon)" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          
+          echo "### 📞 Support & Documentation" >> changelog_temp.md
+          echo "- **Issues**: Report bugs at GitHub Issues" >> changelog_temp.md
+          echo "- **Documentation**: Full guides at GitHub Wiki" >> changelog_temp.md
+          echo "- **Discussions**: Community support at GitHub Discussions" >> changelog_temp.md
+          echo "" >> changelog_temp.md
+          
+          echo "---" >> changelog_temp.md
+          echo "**Build Info**: Compiled on ${RELEASE_DATE} | Commit: ${COMMIT_HASH} | CI/CD: GitHub Actions" >> changelog_temp.md
+          echo "**License**: MIT License | **Made with**: ❤️ + ☕ + Rust + TypeScript" >> changelog_temp.md
           
           # Use heredoc for multiline output without escaping issues
           {
@@ -381,28 +341,28 @@ CHANGELOG_EOF
           fi
           
           # Add README for portable version
-          cat > windows-portable/README.md << EOF
-          # OpenLoveImage Portable v${VERSION}
-          
-          ## How to Use
-          1. Double-click \`OpenLoveImage.exe\` to run the application
-          2. No installation required - runs directly
-          3. All your settings are saved in the same folder
-          
-          ## Features
-          - Convert images between formats (HEIC, JPG, PNG, WebP, etc.)
-          - Batch processing support
-          - Before/after preview
-          - Privacy-focused (all processing done locally)
-          
-          ## System Requirements
-          - Windows 10 or later
-          - 64-bit architecture
-          
-          ## Support
-          - GitHub: https://github.com/ireddragonicy/openloveimage
-          - Issues: https://github.com/ireddragonicy/openloveimage/issues
-          EOF
+          cat > windows-portable/README.md << 'WINDOWS_README_EOF'
+# OpenLoveImage Portable v${VERSION}
+
+## How to Use
+1. Double-click OpenLoveImage.exe to run the application
+2. No installation required - runs directly
+3. All your settings are saved in the same folder
+
+## Features
+- Convert images between formats (HEIC, JPG, PNG, WebP, etc.)
+- Batch processing support
+- Before/after preview
+- Privacy-focused (all processing done locally)
+
+## System Requirements
+- Windows 10 or later
+- 64-bit architecture
+
+## Support
+- GitHub: https://github.com/ireddragonicy/openloveimage
+- Issues: https://github.com/ireddragonicy/openloveimage/issues
+WINDOWS_README_EOF
           
           # Create ZIP
           cd windows-portable
@@ -441,44 +401,44 @@ CHANGELOG_EOF
           chmod +x linux-portable/run.sh
           
           # Add README for portable version
-          cat > linux-portable/README.md << EOF
-          # OpenLoveImage Portable v${VERSION}
-          
-          ## How to Use
-          
-          ### Quick Start
-          \`\`\`bash
-          chmod +x run.sh
-          ./run.sh
-          \`\`\`
-          
-          ### Direct Launch
-          \`\`\`bash
-          chmod +x OpenLoveImage
-          ./OpenLoveImage
-          \`\`\`
-          
-          ## Features
-          - Convert images between formats (HEIC, JPG, PNG, WebP, etc.)
-          - Batch processing support
-          - Before/after preview
-          - Privacy-focused (all processing done locally)
-          
-          ## System Requirements
-          - Linux 64-bit
-          - GTK 3.0+ libraries
-          - WebKit2GTK
-          
-          ## Dependencies (Ubuntu/Debian)
-          \`\`\`bash
-          sudo apt update
-          sudo apt install libwebkit2gtk-4.1-dev libgtk-3-0
-          \`\`\`
-          
-          ## Support
-          - GitHub: https://github.com/ireddragonicy/openloveimage
-          - Issues: https://github.com/ireddragonicy/openloveimage/issues
-          EOF
+          cat > linux-portable/README.md << 'LINUX_README_EOF'
+# OpenLoveImage Portable v${VERSION}
+
+## How to Use
+
+### Quick Start
+```bash
+chmod +x run.sh
+./run.sh
+```
+
+### Direct Launch
+```bash
+chmod +x OpenLoveImage
+./OpenLoveImage
+```
+
+## Features
+- Convert images between formats (HEIC, JPG, PNG, WebP, etc.)
+- Batch processing support
+- Before/after preview
+- Privacy-focused (all processing done locally)
+
+## System Requirements
+- Linux 64-bit
+- GTK 3.0+ libraries
+- WebKit2GTK
+
+## Dependencies (Ubuntu/Debian)
+```bash
+sudo apt update
+sudo apt install libwebkit2gtk-4.1-dev libgtk-3-0
+```
+
+## Support
+- GitHub: https://github.com/ireddragonicy/openloveimage
+- Issues: https://github.com/ireddragonicy/openloveimage/issues
+LINUX_README_EOF
           
           # Create ZIP
           cd linux-portable
@@ -496,33 +456,33 @@ CHANGELOG_EOF
           find build-artifacts -name "*.app" -exec cp -r {} macos-portable/ \; 2>/dev/null || true
           
           # Add README for portable version
-          cat > macos-portable/README.md << EOF
-          # OpenLoveImage Portable v${VERSION}
-          
-          ## How to Use
-          1. Double-click the \`.app\` file to run
-          2. If prompted about security, go to System Preferences > Security & Privacy
-          3. Click "Open Anyway" to allow the app to run
-          
-          ## Installation (Optional)
-          - Drag the \`.app\` file to your Applications folder
-          - Or run directly from this location
-          
-          ## Features
-          - Convert images between formats (HEIC, JPG, PNG, WebP, etc.)
-          - Batch processing support
-          - Before/after preview
-          - Privacy-focused (all processing done locally)
-          - Universal binary (Intel + Apple Silicon)
-          
-          ## System Requirements
-          - macOS 10.15 (Catalina) or later
-          - Intel or Apple Silicon Mac
-          
-          ## Support
-          - GitHub: https://github.com/ireddragonicy/openloveimage
-          - Issues: https://github.com/ireddragonicy/openloveimage/issues
-          EOF
+          cat > macos-portable/README.md << 'MACOS_README_EOF'
+# OpenLoveImage Portable v${VERSION}
+
+## How to Use
+1. Double-click the .app file to run
+2. If prompted about security, go to System Preferences > Security & Privacy
+3. Click "Open Anyway" to allow the app to run
+
+## Installation (Optional)
+- Drag the .app file to your Applications folder
+- Or run directly from this location
+
+## Features
+- Convert images between formats (HEIC, JPG, PNG, WebP, etc.)
+- Batch processing support
+- Before/after preview
+- Privacy-focused (all processing done locally)
+- Universal binary (Intel + Apple Silicon)
+
+## System Requirements
+- macOS 10.15 (Catalina) or later
+- Intel or Apple Silicon Mac
+
+## Support
+- GitHub: https://github.com/ireddragonicy/openloveimage
+- Issues: https://github.com/ireddragonicy/openloveimage/issues
+MACOS_README_EOF
           
           # Create ZIP
           cd macos-portable
