@@ -33,7 +33,8 @@ const ImageConverterApp = () => {
 
   const handleProcessFiles = useCallback(async (
     files: File[],
-    onProgress?: (fileIndex: number, progress: number) => void
+    onProgress?: (fileIndex: number, progress: number) => void,
+    abortSignal?: AbortSignal
   ): Promise<ProcessedFile[]> => {
     const results: ProcessedFile[] = [];
 
@@ -45,7 +46,8 @@ const ImageConverterApp = () => {
         (completed, total) => {
           // Overall progress can be used if needed
         },
-        onProgress
+        onProgress,
+        abortSignal
       );
 
       // Ensure results array length matches files array length

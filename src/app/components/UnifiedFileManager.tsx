@@ -77,7 +77,7 @@ export interface ProcessedFile {
   originalSize: number;
   convertedBlob?: Blob;
   convertedSize?: number;
-  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'error';
+  status: 'pending' | 'uploading' | 'processing' | 'completed' | 'error' | 'cancelled';
   error?: string;
   outputFormat: string;
   // Upload progress tracking
@@ -85,15 +85,19 @@ export interface ProcessedFile {
   uploadSpeed?: number; // bytes per second
   uploadedSize?: number; // bytes uploaded so far
   uploadStartTime?: number;
+  uploadETA?: number; // estimated time remaining in seconds
   // Conversion progress tracking
   conversionProgress?: number; // 0-100
   conversionStartTime?: number;
+  conversionETA?: number; // estimated time remaining in seconds
+  // Cancellation tracking
+  isCancelling?: boolean;
   // PDF multi-page support
   isMergedIntoPdf?: boolean; // Flag to indicate file was merged into a multi-page PDF
 }
 
 interface UnifiedFileManagerProps {
-  onProcessFiles: (files: File[], onProgress?: (fileIndex: number, progress: number) => void) => Promise<ProcessedFile[]>;
+  onProcessFiles: (files: File[], onProgress?: (fileIndex: number, progress: number) => void, abortSignal?: AbortSignal) => Promise<ProcessedFile[]>;
   outputFormat: string;
   conversionSettings?: any; // Add conversion settings to determine filename generation
 }
@@ -125,44 +129,68 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
   const [cropEditorOpen, setCropEditorOpen] = useState(false);
   const [currentCropFile, setCurrentCropFile] = useState<{ file: File; index: number } | null>(null);
   const [croppedFiles, setCroppedFiles] = useState<{ [key: number]: File }>({});
+  
+  // Cancellation states
+  const [cancellationRequests, setCancellationRequests] = useState<{ [key: number]: AbortController }>({});
+  const [cancellingFiles, setCancellingFiles] = useState<{ [key: number]: boolean }>({});
 
-  // Simulate upload progress for each file
+  // Simulate upload progress for each file with realistic speeds and ETA
   const simulateUploadProgress = useCallback(async (file: File, fileIndex: number) => {
     const fileName = file.name;
     const startTime = Date.now();
     const fileSize = file.size;
-    const chunkSize = Math.max(fileSize / 20, 1024 * 50); // Simulate chunks
+    
+    // Simulate different upload speeds for different files (0.5MB/s to 5MB/s)
+    const baseSpeed = 0.5 * 1024 * 1024; // 0.5 MB/s minimum
+    const speedVariation = Math.random() * 4.5 * 1024 * 1024; // up to 4.5 MB/s additional
+    const targetSpeed = baseSpeed + speedVariation;
+    
+    // Calculate chunk size based on target speed (update every 200ms)
+    const updateInterval = 200;
+    const chunkSize = Math.max((targetSpeed * updateInterval) / 1000, 1024 * 10); // Min 10KB chunks
+    
     let uploadedSize = 0;
 
     return new Promise<void>((resolve) => {
       const interval = setInterval(() => {
-        uploadedSize = Math.min(uploadedSize + chunkSize, fileSize);
+        // Add some speed variation to make it more realistic
+        const speedJitter = 0.8 + (Math.random() * 0.4); // 80% to 120% of target speed
+        const currentChunkSize = chunkSize * speedJitter;
+        
+        uploadedSize = Math.min(uploadedSize + currentChunkSize, fileSize);
         const progress = Math.round((uploadedSize / fileSize) * 100);
         const elapsed = (Date.now() - startTime) / 1000;
-        const speed = elapsed > 0 ? uploadedSize / elapsed : 0;
+        const currentSpeed = elapsed > 0 ? uploadedSize / elapsed : 0;
+        
+        // Calculate ETA
+        const remainingBytes = fileSize - uploadedSize;
+        const eta = currentSpeed > 0 ? remainingBytes / currentSpeed : 0;
 
         setProcessedFiles(prev => 
-          prev.map((processedFile, index) => 
-            index === fileIndex + files.length 
-              ? {
-                  ...processedFile,
-                  uploadProgress: progress,
-                  uploadSpeed: speed,
-                  uploadedSize: uploadedSize,
-                  uploadStartTime: startTime,
-                  status: progress === 100 ? 'pending' : 'uploading'
-                }
-              : processedFile
-          )
+          prev.map((processedFile, index) => {
+            // Find the correct file by matching originalFile
+            if (processedFile.originalFile === file) {
+              return {
+                ...processedFile,
+                uploadProgress: progress,
+                uploadSpeed: currentSpeed,
+                uploadedSize: uploadedSize,
+                uploadStartTime: startTime,
+                uploadETA: eta,
+                status: progress === 100 ? 'pending' : 'uploading'
+              };
+            }
+            return processedFile;
+          })
         );
 
         if (uploadedSize >= fileSize) {
           clearInterval(interval);
           resolve();
         }
-      }, 100);
+      }, updateInterval);
     });
-  }, [files.length]);
+  }, []);
 
   // Dropzone setup
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
@@ -172,10 +200,16 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
     const newFiles = [...files, ...validFiles];
     setFiles(newFiles);
     
-    // Start upload simulation for all files in parallel
-    const uploadPromises = validFiles.map((file, index) => 
-      simulateUploadProgress(file, index)
-    );
+    // Start upload simulation for all files in parallel with staggered delays
+    const uploadPromises = validFiles.map((file, index) => {
+      // Stagger the start times to simulate real-world conditions
+      return new Promise<void>((resolve) => {
+        setTimeout(async () => {
+          await simulateUploadProgress(file, index);
+          resolve();
+        }, index * 200); // 200ms delay between each file start
+      });
+    });
     
     // Generate thumbnails for new files
     generateThumbnails(validFiles);
@@ -390,6 +424,48 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
     setCurrentCropFile(null);
   };
 
+  // Cancel conversion for a specific file
+  const handleCancelConversion = (fileIndex: number) => {
+    const abortController = cancellationRequests[fileIndex];
+    if (abortController) {
+      console.log(`Cancelling conversion for file index ${fileIndex}`);
+      
+      // Mark as cancelling
+      setCancellingFiles(prev => ({ ...prev, [fileIndex]: true }));
+      
+      // Abort the operation
+      abortController.abort();
+      
+      // Update file status
+      setProcessedFiles(prev => 
+        prev.map((file, index) => 
+          index === fileIndex 
+            ? { 
+                ...file, 
+                status: 'cancelled' as const,
+                isCancelling: true,
+                error: 'Conversion cancelled by user'
+              }
+            : file
+        )
+      );
+      
+      // Clean up cancellation state after a short delay
+      setTimeout(() => {
+        setCancellingFiles(prev => {
+          const newState = { ...prev };
+          delete newState[fileIndex];
+          return newState;
+        });
+        setCancellationRequests(prev => {
+          const newState = { ...prev };
+          delete newState[fileIndex];
+          return newState;
+        });
+      }, 1000);
+    }
+  };
+
   // Processing functions - Refactored to use individual processing logic
   const handleProcessFiles = async () => {
     // Get indices of pending files
@@ -425,19 +501,32 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
         );
 
         try {
-          // Create progress handler for this specific file
+          // Create abort controller for cancellation
+          const abortController = new AbortController();
+          setCancellationRequests(prev => ({ ...prev, [fileIndex]: abortController }));
+          
+          // Create progress handler for this specific file with ETA calculation
           const handleProgress = (fileIdx: number, progress: number) => {
             setProcessedFiles(prev => 
-              prev.map((file, index) => 
-                index === fileIndex 
-                  ? { ...file, conversionProgress: progress }
-                  : file
-              )
+              prev.map((file, index) => {
+                if (index === fileIndex) {
+                  const elapsed = file.conversionStartTime ? (Date.now() - file.conversionStartTime) / 1000 : 0;
+                  const eta = progress > 0 && progress < 100 ? 
+                    (elapsed * (100 - progress)) / progress : 0;
+                  
+                  return { 
+                    ...file, 
+                    conversionProgress: progress,
+                    conversionETA: eta
+                  };
+                }
+                return file;
+              })
             );
           };
 
-          // Use the same conversion logic as individual file processing
-          const results = await onProcessFiles([targetFile], handleProgress);
+          // Use the same conversion logic as individual file processing with abort signal
+          const results = await onProcessFiles([targetFile], handleProgress, abortController.signal);
           const result = results[0];
           
           // Validate single result
@@ -465,19 +554,33 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
           
         } catch (error) {
           console.error(`File ${fileIndex} processing failed:`, error);
-          // Update this specific file with error
+          
+          // Check if it was cancelled
+          const isCancelled = error instanceof Error && error.name === 'AbortError';
+          
+          // Update this specific file with error or cancelled status
           setProcessedFiles(prev => 
             prev.map((file, index) => 
               index === fileIndex 
                 ? { 
                     ...file, 
-                    status: 'error' as const, 
-                    error: error instanceof Error ? error.message : 'Processing failed',
-                    conversionProgress: 100
+                    status: isCancelled ? 'cancelled' as const : 'error' as const, 
+                    error: isCancelled 
+                      ? 'Conversion cancelled by user'
+                      : (error instanceof Error ? error.message : 'Processing failed'),
+                    conversionProgress: 100,
+                    isCancelling: false
                   }
                 : file
             )
           );
+        } finally {
+          // Clean up abort controller
+          setCancellationRequests(prev => {
+            const newState = { ...prev };
+            delete newState[fileIndex];
+            return newState;
+          });
         }
       }
       
@@ -522,18 +625,32 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
     );
 
     try {
-      // Create progress handler for this specific file
+      // Create abort controller for cancellation
+      const abortController = new AbortController();
+      setCancellationRequests(prev => ({ ...prev, [fileIndex]: abortController }));
+      
+      // Create progress handler for this specific file with ETA calculation
       const handleProgress = (fileIdx: number, progress: number) => {
         setProcessedFiles(prev => 
-          prev.map((file, index) => 
-            index === fileIndex 
-              ? { ...file, conversionProgress: progress }
-              : file
-          )
+          prev.map((file, index) => {
+            if (index === fileIndex) {
+              const elapsed = file.conversionStartTime ? (Date.now() - file.conversionStartTime) / 1000 : 0;
+              const eta = progress > 0 && progress < 100 ? 
+                (elapsed * (100 - progress)) / progress : 0;
+              
+              return { 
+                ...file, 
+                conversionProgress: progress,
+                conversionETA: eta
+              };
+            }
+            return file;
+          })
         );
       };
 
-      const results = await onProcessFiles([targetFile], handleProgress);
+      // Use individual file processing logic with abort signal
+      const results = await onProcessFiles([targetFile], handleProgress, abortController.signal);
       const result = results[0];
       
       // Validate single result
@@ -569,33 +686,56 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
         })
       );
     } catch (error) {
-      console.error('Single file processing failed:', error);
+      console.error(`Single file ${fileIndex} processing failed:`, error);
+      
+      // Check if it was cancelled
+      const isCancelled = error instanceof Error && error.name === 'AbortError';
+      
       setProcessedFiles(prev => 
         prev.map((file, index) => 
           index === fileIndex 
             ? { 
                 ...file, 
-                status: 'error' as const, 
-                error: 'Processing failed',
-                conversionProgress: 0
+                status: isCancelled ? 'cancelled' as const : 'error' as const, 
+                error: isCancelled 
+                  ? 'Conversion cancelled by user'
+                  : (error instanceof Error ? error.message : 'Processing failed'),
+                conversionProgress: 100,
+                isCancelling: false
               }
             : file
         )
       );
+    } finally {
+      // Clean up abort controller
+      setCancellationRequests(prev => {
+        const newState = { ...prev };
+        delete newState[fileIndex];
+        return newState;
+      });
     }
   };
 
   // Reset file status for re-conversion
   const handleResetFile = (fileIndex: number) => {
+    // Cancel any ongoing conversion first
+    if (cancellationRequests[fileIndex]) {
+      handleCancelConversion(fileIndex);
+    }
+    
     setProcessedFiles(prev => 
       prev.map((file, index) => 
         index === fileIndex 
           ? { 
               ...file, 
-              status: 'pending' as const, 
-              error: undefined,
+              status: 'pending' as const,
               convertedBlob: undefined,
-              convertedSize: undefined
+              convertedSize: undefined,
+              error: undefined,
+              conversionProgress: undefined,
+              conversionStartTime: undefined,
+              conversionETA: undefined,
+              isCancelling: false
             }
           : file
       )
@@ -669,6 +809,23 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
     const units = ['B/s', 'KB/s', 'MB/s', 'GB/s'];
     const i = Math.floor(Math.log(bytesPerSecond) / Math.log(1024));
     return (bytesPerSecond / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+  };
+
+  // Format ETA time
+  const formatETA = (seconds: number): string => {
+    if (seconds <= 0 || !isFinite(seconds)) return '';
+    
+    if (seconds < 60) {
+      return `${Math.ceil(seconds)}s`;
+    } else if (seconds < 3600) {
+      const minutes = Math.floor(seconds / 60);
+      const remainingSeconds = Math.ceil(seconds % 60);
+      return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+    } else {
+      const hours = Math.floor(seconds / 3600);
+      const minutes = Math.floor((seconds % 3600) / 60);
+      return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+    }
   };
 
   // Cleanup on unmount
@@ -1033,6 +1190,9 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
                                   </Typography>
                                   <Typography variant="caption" color="text.secondary">
                                     {file.uploadSpeed ? formatSpeed(file.uploadSpeed) : '0 B/s'}
+                                    {file.uploadETA && file.uploadETA > 0 && (
+                                      <> • ETA {formatETA(file.uploadETA)}</>
+                                    )}
                                   </Typography>
                                 </Box>
                                 <LinearProgress 
@@ -1059,6 +1219,9 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
                                       `${Math.round((Date.now() - file.conversionStartTime) / 1000)}s` : 
                                       '0s'
                                     }
+                                    {file.conversionETA && file.conversionETA > 0 && (
+                                      <> • ETA {formatETA(file.conversionETA)}</>
+                                    )}
                                   </Typography>
                                 </Box>
                                 <LinearProgress 
@@ -1123,6 +1286,9 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
                           {file.status === 'error' && (
                             <Chip size="small" label="Error" color="error" icon={<ErrorIcon />} />
                           )}
+                          {file.status === 'cancelled' && (
+                            <Chip size="small" label="Cancelled" color="warning" icon={<Close />} />
+                          )}
                         </Box>
 
                         {/* Action Buttons */}
@@ -1182,8 +1348,29 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
 
                           {/* Processing State */}
                           {file.status === 'processing' && (
-                            <Box sx={{ p: 1, display: 'flex', alignItems: 'center' }}>
-                              <CircularProgress size={16} thickness={4} />
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              {!cancellingFiles[originalIndex] && (
+                                <IconButton 
+                                  onClick={() => handleCancelConversion(originalIndex)}
+                                  color="error"
+                                  size="small"
+                                  title="Cancel conversion"
+                                  sx={{
+                                    bgcolor: 'error.main',
+                                    color: 'error.contrastText',
+                                    '&:hover': { bgcolor: 'error.dark' }
+                                  }}
+                                >
+                                  <Close />
+                                </IconButton>
+                              )}
+                              <Box sx={{ p: 1, display: 'flex', alignItems: 'center' }}>
+                                <CircularProgress 
+                                  size={16} 
+                                  thickness={4} 
+                                  color={cancellingFiles[originalIndex] ? "warning" : "primary"}
+                                />
+                              </Box>
                             </Box>
                           )}
 
@@ -1251,6 +1438,37 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
 
                           {/* Error State Actions */}
                           {file.status === 'error' && (
+                            <>
+                              <IconButton 
+                                onClick={() => handleProcessSingleFile(originalIndex)}
+                                color="primary"
+                                size="small"
+                                title="Retry conversion"
+                                sx={{
+                                  bgcolor: 'primary.main',
+                                  color: 'primary.contrastText',
+                                  '&:hover': { bgcolor: 'primary.dark' }
+                                }}
+                              >
+                                <Refresh />
+                              </IconButton>
+                              <IconButton 
+                                onClick={() => removeFile(originalIndex)}
+                                color="error"
+                                size="small"
+                                title="Remove file"
+                                sx={{
+                                  bgcolor: 'action.hover',
+                                  '&:hover': { bgcolor: 'error.light', color: 'error.contrastText' }
+                                }}
+                              >
+                                <Delete />
+                              </IconButton>
+                            </>
+                          )}
+
+                          {/* Cancelled State Actions */}
+                          {file.status === 'cancelled' && (
                             <>
                               <IconButton 
                                 onClick={() => handleProcessSingleFile(originalIndex)}

@@ -792,9 +792,15 @@ export class ImageConverter {
   static async convertImage(
     file: File,
     settings: ConversionSettings,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    abortSignal?: AbortSignal
   ): Promise<ConversionResult> {
     try {
+      // Check for cancellation
+      if (abortSignal?.aborted) {
+        throw new Error('Conversion cancelled');
+      }
+
       // Validate file input
       if (!file || !file.name || file.size === undefined) {
         throw new Error('Invalid file provided');
@@ -806,9 +812,19 @@ export class ImageConverter {
       // Report initial progress
       onProgress?.(10);
 
+      // Check for cancellation
+      if (abortSignal?.aborted) {
+        throw new Error('Conversion cancelled');
+      }
+
       // Check if input is HEIC
       const isInputHeic = await isHeic(file);
       onProgress?.(20);
+
+      // Check for cancellation
+      if (abortSignal?.aborted) {
+        throw new Error('Conversion cancelled');
+      }
 
       if (isInputHeic) {
         // Converting FROM HEIC
@@ -824,12 +840,18 @@ export class ImageConverter {
             onProgress?.(80);
             convertedBlob = file;
           }
-        } else {
-          // HEIC to other format
-          onProgress?.(40);
-          convertedBlob = await this.convertFromHeic(file, settings);
-          onProgress?.(80);
-        }
+                  } else {
+            // HEIC to other format
+            onProgress?.(40);
+            
+            // Check for cancellation
+            if (abortSignal?.aborted) {
+              throw new Error('Conversion cancelled');
+            }
+            
+            convertedBlob = await this.convertFromHeic(file, settings);
+            onProgress?.(80);
+          }
       } else {
         // Converting FROM regular image format
         if (settings.outputFormat === 'heic') {
@@ -855,6 +877,12 @@ export class ImageConverter {
           } else {
             // Regular image conversion
             onProgress?.(40);
+            
+            // Check for cancellation
+            if (abortSignal?.aborted) {
+              throw new Error('Conversion cancelled');
+            }
+            
             convertedBlob = await this.convertRegularImage(file, settings);
             onProgress?.(80);
           }
@@ -879,10 +907,15 @@ export class ImageConverter {
       return result;
 
     } catch (error) {
+      // Check if it was a cancellation
+      const isCancelled = error instanceof Error && (error.message === 'Conversion cancelled' || error.name === 'AbortError');
+      
       // Ensure we always return a valid ConversionResult
       const errorResult = {
         success: false,
-        error: error instanceof Error ? error.message : 'Unknown error occurred',
+        error: isCancelled 
+          ? 'Conversion cancelled by user' 
+          : (error instanceof Error ? error.message : 'Unknown error occurred'),
         originalSize: file?.size || 0
       };
       
@@ -895,15 +928,17 @@ export class ImageConverter {
     files: File[],
     settings: ConversionSettings,
     onOverallProgress?: (completed: number, total: number) => void,
-    onIndividualProgress?: (fileIndex: number, progress: number) => void
+    onIndividualProgress?: (fileIndex: number, progress: number) => void,
+    abortSignal?: AbortSignal
   ): Promise<ConversionResult[]> {
     // Special handling for PDF - create multi-page PDF
-    if (settings.outputFormat === 'pdf' && files.length > 1) {
+          if (settings.outputFormat === 'pdf' && files.length > 1) {
       const multiPageResult = await this.convertMultipleImagesToPdf(
         files, 
         settings, 
         onOverallProgress, 
-        onIndividualProgress
+        onIndividualProgress,
+        abortSignal
       );
       
       // For PDF multi-page conversion, treat it as one successful conversion for first file
@@ -937,11 +972,25 @@ export class ImageConverter {
     const results: ConversionResult[] = [];
 
     for (let i = 0; i < files.length; i++) {
+      // Check for cancellation before processing each file
+      if (abortSignal?.aborted) {
+        // Return partial results for already processed files and mark remaining as cancelled
+        for (let j = i; j < files.length; j++) {
+          results.push({
+            success: false,
+            error: 'Conversion cancelled by user',
+            originalSize: files[j]?.size || 0
+          });
+        }
+        break;
+      }
+
       try {
         const result = await this.convertImage(
           files[i], 
           settings,
-          (progress) => onIndividualProgress?.(i, progress)
+          (progress) => onIndividualProgress?.(i, progress),
+          abortSignal
         );
         
         // Ensure result is valid
@@ -975,7 +1024,8 @@ export class ImageConverter {
     files: File[],
     settings: ConversionSettings,
     onOverallProgress?: (completed: number, total: number) => void,
-    onIndividualProgress?: (fileIndex: number, progress: number) => void
+    onIndividualProgress?: (fileIndex: number, progress: number) => void,
+    abortSignal?: AbortSignal
   ): Promise<ConversionResult> {
     try {
       // Get PDF settings with defaults
@@ -1028,11 +1078,21 @@ export class ImageConverter {
       const cellHeight = usableHeight / rows;
 
       for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+        // Check for cancellation
+        if (abortSignal?.aborted) {
+          throw new Error('PDF conversion cancelled by user');
+        }
+
         const file = files[fileIndex];
         totalOriginalSize += file.size;
 
         try {
           onIndividualProgress?.(fileIndex, 10);
+
+          // Check for cancellation
+          if (abortSignal?.aborted) {
+            throw new Error('PDF conversion cancelled by user');
+          }
 
           // Load and process image
           let img: HTMLImageElement;
@@ -1166,9 +1226,14 @@ export class ImageConverter {
       };
 
     } catch (error) {
+      // Check if it was a cancellation
+      const isCancelled = error instanceof Error && (error.message.includes('cancelled') || error.name === 'AbortError');
+      
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to create multi-page PDF',
+        error: isCancelled 
+          ? 'PDF conversion cancelled by user'
+          : (error instanceof Error ? error.message : 'Failed to create multi-page PDF'),
         originalSize: files.reduce((sum, file) => sum + file.size, 0)
       };
     }

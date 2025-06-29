@@ -92,13 +92,15 @@ const BACKGROUND_COLORS = [
 
 const GRID_TYPES = [
   { value: 'thirds', label: 'Rule of Thirds', description: '3×3 classic composition grid' },
+  { value: 'phi', label: 'Phi Grid', description: 'Golden Ratio (1:1.618) grid' },
   { value: 'golden', label: 'Golden Ratio', description: 'φ (1.618) proportional grid' },
+  { value: 'triangle', label: 'Golden Triangles', description: 'Diagonal composition guides' },
+  { value: 'dynamic', label: 'Dynamic Symmetry', description: 'Baroque diagonal guides' },
   { value: 'center', label: 'Center Cross', description: 'Center horizontal & vertical lines' },
   { value: 'diagonal', label: 'Diagonal Lines', description: 'Corner-to-corner diagonal guides' },
   { value: 'square4', label: '4×4 Grid', description: 'Square 4×4 grid pattern' },
   { value: 'square6', label: '6×6 Grid', description: 'Fine 6×6 grid pattern' },
   { value: 'square9', label: '9×9 Grid', description: 'Ultra-fine 9×9 grid pattern' },
-  { value: 'triangle', label: 'Triangle Grid', description: 'Triangular composition guides' },
   { value: 'spiral', label: 'Golden Spiral', description: 'Fibonacci spiral overlay' },
   { value: 'horizon', label: 'Horizon Lines', description: 'Horizontal composition guides' },
 ];
@@ -314,13 +316,15 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
     const commonLineStyle = {
       stroke: "rgba(255,255,255,0.8)",
       strokeWidth: "1",
-      strokeDasharray: "2,2"
+      strokeDasharray: "2,2",
+      vectorEffect: "non-scaling-stroke"
     };
     
     const fineLineStyle = {
       stroke: "rgba(255,255,255,0.4)",
       strokeWidth: "0.5",
-      strokeDasharray: "1,1"
+      strokeDasharray: "1,1",
+      vectorEffect: "non-scaling-stroke"
     };
 
     switch (gridType) {
@@ -333,13 +337,29 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
             <line x1="0%" y1="33.33%" x2="100%" y2="33.33%" {...commonLineStyle} />
             <line x1="0%" y1="66.66%" x2="100%" y2="66.66%" {...commonLineStyle} />
             {/* Intersection points */}
-            <circle cx="33.33%" cy="33.33%" r="2" fill="rgba(255,255,255,0.8)" />
-            <circle cx="66.66%" cy="33.33%" r="2" fill="rgba(255,255,255,0.8)" />
-            <circle cx="33.33%" cy="66.66%" r="2" fill="rgba(255,255,255,0.8)" />
-            <circle cx="66.66%" cy="66.66%" r="2" fill="rgba(255,255,255,0.8)" />
+            <circle cx="33.33%" cy="33.33%" r="2" fill="rgba(255,255,255,0.8)" vectorEffect="non-scaling-stroke" />
+            <circle cx="66.66%" cy="33.33%" r="2" fill="rgba(255,255,255,0.8)" vectorEffect="non-scaling-stroke" />
+            <circle cx="33.33%" cy="66.66%" r="2" fill="rgba(255,255,255,0.8)" vectorEffect="non-scaling-stroke" />
+            <circle cx="66.66%" cy="66.66%" r="2" fill="rgba(255,255,255,0.8)" vectorEffect="non-scaling-stroke" />
           </>
         );
 
+      case 'phi':
+        // Phi grid based on the Golden Ratio 1.618
+        // Lines at 38.2%, 61.8%
+        const phiRatio = 1 / 1.618; // approx 0.618
+        const p1 = phiRatio * 100;
+        const p2 = (1 - phiRatio) * 100;
+
+        return (
+          <>
+            <line x1={`${p2}%`} y1="0%" x2={`${p2}%`} y2="100%" {...commonLineStyle} />
+            <line x1={`${p1}%`} y1="0%" x2={`${p1}%`} y2="100%" {...commonLineStyle} />
+            <line x1="0%" y1={`${p2}%`} x2="100%" y2={`${p2}%`} {...commonLineStyle} />
+            <line x1="0%" y1={`${p1}%`} x2="100%" y2={`${p1}%`} {...commonLineStyle} />
+          </>
+        );
+        
       case 'golden':
         // Golden ratio: φ = 1.618, positions at ~38.2% and ~61.8%
         return (
@@ -349,10 +369,38 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
             <line x1="0%" y1="38.2%" x2="100%" y2="38.2%" {...commonLineStyle} />
             <line x1="0%" y1="61.8%" x2="100%" y2="61.8%" {...commonLineStyle} />
             {/* Golden ratio points */}
-            <circle cx="38.2%" cy="38.2%" r="2" fill="rgba(255,215,0,0.8)" />
-            <circle cx="61.8%" cy="38.2%" r="2" fill="rgba(255,215,0,0.8)" />
-            <circle cx="38.2%" cy="61.8%" r="2" fill="rgba(255,215,0,0.8)" />
-            <circle cx="61.8%" cy="61.8%" r="2" fill="rgba(255,215,0,0.8)" />
+            <circle cx="38.2%" cy="38.2%" r="2" fill="rgba(255,215,0,0.8)" vectorEffect="non-scaling-stroke" />
+            <circle cx="61.8%" cy="38.2%" r="2" fill="rgba(255,215,0,0.8)" vectorEffect="non-scaling-stroke" />
+            <circle cx="38.2%" cy="61.8%" r="2" fill="rgba(255,215,0,0.8)" vectorEffect="non-scaling-stroke" />
+            <circle cx="61.8%" cy="61.8%" r="2" fill="rgba(255,215,0,0.8)" vectorEffect="non-scaling-stroke" />
+          </>
+        );
+
+      case 'triangle':
+        return (
+          <>
+            {/* Golden Triangles */}
+            <line x1="0%" y1="0%" x2="100%" y2="100%" {...commonLineStyle} />
+            <line x1="0%" y1="100%" x2="100%" y2="0%" {...commonLineStyle} />
+            <line x1="0" y1="100%" x2="50%" y2="0" {...fineLineStyle} />
+            <line x1="100%" y1="100%" x2="50%" y2="0" {...fineLineStyle} />
+          </>
+        );
+
+      case 'dynamic':
+        return (
+          <>
+            {/* Dynamic Symmetry / Baroque Diagonals */}
+            <line x1="0%" y1="100%" x2="100%" y2="0%" {...commonLineStyle} />
+            <line x1="0%" y1="0%" x2="0%" y2="100%" {...commonLineStyle} />
+            <line x1="100%" y1="0%" x2="100%" y2="100%" {...commonLineStyle} />
+            <line x1="0%" y1="0%" x2="100%" y2="0%" {...commonLineStyle} />
+            <line x1="0%" y1="100%" x2="100%" y2="100%" {...commonLineStyle} />
+            
+            {/* Reciprocal lines */}
+            <line x1="0%" y1="0%" x2="100%" y2="100%" {...fineLineStyle} />
+            <line x1="0%" y1="38.2%" x2="61.8%" y2="100%" {...fineLineStyle} />
+            <line x1="38.2%" y1="0%" x2="100%" y2="61.8%" {...fineLineStyle} />
           </>
         );
 
@@ -363,7 +411,7 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
             <line x1="50%" y1="0%" x2="50%" y2="100%" {...commonLineStyle} />
             <line x1="0%" y1="50%" x2="100%" y2="50%" {...commonLineStyle} />
             {/* Center point */}
-            <circle cx="50%" cy="50%" r="3" fill="rgba(255,255,255,0.8)" stroke="rgba(0,0,0,0.8)" strokeWidth="1" />
+            <circle cx="50%" cy="50%" r="3" fill="rgba(255,255,255,0.8)" stroke="rgba(0,0,0,0.8)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
           </>
         );
 
@@ -374,7 +422,7 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
             <line x1="0%" y1="0%" x2="100%" y2="100%" {...commonLineStyle} />
             <line x1="100%" y1="0%" x2="0%" y2="100%" {...commonLineStyle} />
             {/* Center intersection */}
-            <circle cx="50%" cy="50%" r="2" fill="rgba(255,255,255,0.8)" />
+            <circle cx="50%" cy="50%" r="2" fill="rgba(255,255,255,0.8)" vectorEffect="non-scaling-stroke" />
           </>
         );
 
@@ -453,20 +501,6 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
           </>
         );
 
-      case 'triangle':
-        return (
-          <>
-            {/* Triangle composition lines */}
-            <line x1="0%" y1="100%" x2="50%" y2="0%" {...commonLineStyle} />
-            <line x1="100%" y1="100%" x2="50%" y2="0%" {...commonLineStyle} />
-            <line x1="0%" y1="100%" x2="100%" y2="100%" {...commonLineStyle} />
-            {/* Triangle vertices */}
-            <circle cx="50%" cy="0%" r="2" fill="rgba(255,255,255,0.8)" />
-            <circle cx="0%" cy="100%" r="2" fill="rgba(255,255,255,0.8)" />
-            <circle cx="100%" cy="100%" r="2" fill="rgba(255,255,255,0.8)" />
-          </>
-        );
-
       case 'spiral':
         // Simplified golden spiral approximation
         return (
@@ -475,10 +509,11 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
               d="M 0,100 Q 0,0 50,0 Q 100,0 100,50 Q 100,100 75,100 Q 50,100 50,75 Q 50,50 62.5,50"
               fill="none"
               stroke="rgba(255,215,0,0.8)"
-              strokeWidth="2"
-              strokeDasharray="3,3"
+              strokeWidth="1.5"
+              strokeDasharray="2,2"
+              vectorEffect="non-scaling-stroke"
             />
-            <circle cx="62.5%" cy="50%" r="2" fill="rgba(255,215,0,0.8)" />
+            <circle cx="62.5" cy="50" r="2" fill="rgba(255,215,0,0.8)" vectorEffect="non-scaling-stroke" />
           </>
         );
 
@@ -490,10 +525,10 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
             <line x1="0%" y1="50%" x2="100%" y2="50%" {...commonLineStyle} />
             <line x1="0%" y1="75%" x2="100%" y2="75%" {...commonLineStyle} />
             {/* Horizon markers */}
-            <circle cx="10%" cy="25%" r="1.5" fill="rgba(255,255,255,0.6)" />
-            <circle cx="90%" cy="25%" r="1.5" fill="rgba(255,255,255,0.6)" />
-            <circle cx="10%" cy="75%" r="1.5" fill="rgba(255,255,255,0.6)" />
-            <circle cx="90%" cy="75%" r="1.5" fill="rgba(255,255,255,0.6)" />
+            <circle cx="10%" cy="25%" r="1.5" fill="rgba(255,255,255,0.6)" vectorEffect="non-scaling-stroke" />
+            <circle cx="90%" cy="25%" r="1.5" fill="rgba(255,255,255,0.6)" vectorEffect="non-scaling-stroke" />
+            <circle cx="10%" cy="75%" r="1.5" fill="rgba(255,255,255,0.6)" vectorEffect="non-scaling-stroke" />
+            <circle cx="90%" cy="75%" r="1.5" fill="rgba(255,255,255,0.6)" vectorEffect="non-scaling-stroke" />
           </>
         );
 
@@ -544,6 +579,8 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
         <svg
           width="100%"
           height="100%"
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
           style={{
             position: 'absolute',
             top: 0,
