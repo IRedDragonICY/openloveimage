@@ -41,12 +41,14 @@ import {
   Refresh,
   Transform,
   Crop,
+  Info,
 } from '@mui/icons-material';
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import ImagePreview from './ImagePreview';
 import BeforeAfterPreview from './BeforeAfterPreview';
 import ImageCropEditor from './ImageCropEditor';
+import ImageMetadataViewer from './ImageMetadataViewer';
 import { heicTo, isHeic } from 'heic-to';
 
 // Helper function to get actual file type including HEIC
@@ -129,6 +131,10 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
   const [cropEditorOpen, setCropEditorOpen] = useState(false);
   const [currentCropFile, setCurrentCropFile] = useState<{ file: File; index: number } | null>(null);
   const [croppedFiles, setCroppedFiles] = useState<{ [key: number]: File }>({});
+  
+  // Metadata viewer states
+  const [metadataViewerOpen, setMetadataViewerOpen] = useState(false);
+  const [currentMetadataFile, setCurrentMetadataFile] = useState<{ file: File; fileName: string } | null>(null);
   
   // Cancellation states
   const [cancellationRequests, setCancellationRequests] = useState<{ [key: number]: AbortController }>({});
@@ -422,6 +428,17 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
   const handleCropClose = () => {
     setCropEditorOpen(false);
     setCurrentCropFile(null);
+  };
+
+  // Metadata viewer handlers
+  const handleMetadataClick = (file: File, fileName: string) => {
+    setCurrentMetadataFile({ file, fileName });
+    setMetadataViewerOpen(true);
+  };
+
+  const handleMetadataClose = () => {
+    setMetadataViewerOpen(false);
+    setCurrentMetadataFile(null);
   };
 
   // Cancel conversion for a specific file
@@ -1293,6 +1310,22 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
 
                         {/* Action Buttons */}
                         <Stack direction="row" spacing={0.5} flexWrap="wrap">
+                          {/* Universal Actions (available for all states) */}
+                          {file.originalFile && (
+                            <IconButton 
+                              onClick={() => handleMetadataClick(file.originalFile!, file.originalFile!.name)}
+                              color="info"
+                              size="small"
+                              title="View metadata"
+                              sx={{
+                                bgcolor: 'action.hover',
+                                '&:hover': { bgcolor: 'info.light', color: 'info.contrastText' }
+                              }}
+                            >
+                              <Info />
+                            </IconButton>
+                          )}
+
                           {/* Pending State Actions */}
                           {file.status === 'pending' && (
                             <>
@@ -1547,6 +1580,14 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
           title={`Crop ${currentCropFile.file.name}`}
         />
       )}
+
+      {/* Image Metadata Viewer Modal */}
+      <ImageMetadataViewer
+        open={metadataViewerOpen}
+        onClose={handleMetadataClose}
+        file={currentMetadataFile?.file || null}
+        fileName={currentMetadataFile?.fileName || ''}
+      />
     </Box>
   );
 };
