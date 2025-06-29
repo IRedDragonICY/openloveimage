@@ -1,0 +1,39 @@
+{
+  "name": "OpenLoveImage - Free Online Image Converter",
+  "short_name": "OpenLoveImage",
+  "description": "Convert HEIC to JPG, PNG, WebP and more formats instantly. Free, secure, and works entirely in your browser.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1976d2",
+  "orientation": "portrait",
+  "categories": ["utilities", "productivity", "photo"],
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png", 
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Convert Images",
+      "short_name": "Convert",
+      "description": "Start converting images immediately",
+      "url": "/",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+} 

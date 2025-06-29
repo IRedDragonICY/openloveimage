@@ -1,0 +1,17 @@
+User-agent: *
+Allow: /
+
+# Allow specific directories
+Allow: /public/
+Allow: /_next/static/
+
+# Disallow admin or development paths
+Disallow: /api/
+Disallow: /_next/
+Disallow: /admin/
+
+# Sitemap location
+Sitemap: https://openloveimage.com/sitemap.xml
+
+# Crawl delay
+Crawl-delay: 1 
