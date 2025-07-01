@@ -3,6 +3,7 @@ import {ConversionSettings} from '../components/ConversionOptions';
 import {jsPDF} from 'jspdf';
 import toICO from '2ico';
 import JSZip from 'jszip';
+import * as TIFF from 'tiff';
 
 // Type declaration for imagetracerjs
 interface ImageTracerModule {
@@ -83,15 +84,136 @@ export class ImageConverter {
     return { width: Math.round(width), height: Math.round(height) };
   }
 
+  private static calculateCropDimensions(
+    originalWidth: number,
+    originalHeight: number,
+    targetAspectRatio: number,
+    cropMode: 'center' | 'smart' = 'center',
+    cropSizeMode: 'fit' | 'fill' | 'extend' = 'fit'
+  ): { x: number; y: number; width: number; height: number } {
+    const originalAspectRatio = originalWidth / originalHeight;
+    
+    let cropWidth: number;
+    let cropHeight: number;
+    
+    // Calculate crop dimensions based on size mode
+    if (cropSizeMode === 'fill') {
+      // Fill - use full longest dimension for maximum resolution
+      const longestSide = Math.max(originalWidth, originalHeight);
+      
+      if (targetAspectRatio >= 1) {
+        // Wide/square aspect ratio - use longest side as width
+        cropWidth = longestSide;
+        cropHeight = cropWidth / targetAspectRatio;
+      } else {
+        // Tall aspect ratio - use longest side as height
+        cropHeight = longestSide;
+        cropWidth = cropHeight * targetAspectRatio;
+      }
+      
+      console.log(`🎯 Fill mode: Using longest side ${longestSide} for aspect ${targetAspectRatio}`);
+    } else if (cropSizeMode === 'extend') {
+      // Extend - crop can be larger than original image in one dimension
+      const maxDimension = Math.max(originalWidth, originalHeight);
+      
+      if (targetAspectRatio > 1) {
+        // Wide aspect ratio - maximize width
+        cropWidth = maxDimension * 1.2; // 20% extension
+        cropHeight = cropWidth / targetAspectRatio;
+      } else {
+        // Tall aspect ratio - maximize height
+        cropHeight = maxDimension * 1.2; // 20% extension
+        cropWidth = cropHeight * targetAspectRatio;
+      }
+    } else {
+      // Fit - standard crop that fits within image (original logic)
+      if (originalAspectRatio > targetAspectRatio) {
+        // Original is wider, need to crop width
+        cropHeight = originalHeight;
+        cropWidth = cropHeight * targetAspectRatio;
+      } else {
+        // Original is taller, need to crop height
+        cropWidth = originalWidth;
+        cropHeight = cropWidth / targetAspectRatio;
+      }
+      
+      // Ensure crop dimensions don't exceed original
+      cropWidth = Math.min(cropWidth, originalWidth);
+      cropHeight = Math.min(cropHeight, originalHeight);
+    }
+    
+    // Calculate crop position
+    let cropX: number;
+    let cropY: number;
+    
+    if (cropMode === 'center') {
+      // Center crop
+      cropX = (originalWidth - cropWidth) / 2;
+      cropY = (originalHeight - cropHeight) / 2;
+    } else {
+      // Smart crop (for now, use center - can be enhanced later)
+      cropX = (originalWidth - cropWidth) / 2;
+      cropY = (originalHeight - cropHeight) / 2;
+    }
+    
+    console.log(`🎯 Crop Size Mode: ${cropSizeMode}`);
+    console.log(`📏 Calculated dimensions:`, {
+      cropWidth: Math.round(cropWidth),
+      cropHeight: Math.round(cropHeight),
+      cropX: Math.round(cropX),
+      cropY: Math.round(cropY),
+      resultAspectRatio: (cropWidth / cropHeight).toFixed(3)
+    });
+    
+    return {
+      x: Math.round(cropX),
+      y: Math.round(cropY),
+      width: Math.round(cropWidth),
+      height: Math.round(cropHeight)
+    };
+  }
+
   private static async convertWithCanvas(
     image: HTMLImageElement,
     settings: ConversionSettings
   ): Promise<Blob> {
     const { canvas, ctx } = this.getCanvas();
     
+    let sourceWidth = image.naturalWidth;
+    let sourceHeight = image.naturalHeight;
+    let sourceX = 0;
+    let sourceY = 0;
+    
+    // Apply automatic crop if enabled
+    if (settings.enableCrop && settings.cropAspectRatio) {
+      console.log('🔄 Applying automatic crop:', {
+        originalDimensions: { width: sourceWidth, height: sourceHeight },
+        targetAspectRatio: settings.cropAspectRatio,
+        cropMode: settings.cropMode,
+        cropSizeMode: settings.cropSizeMode
+      });
+      
+      const cropResult = this.calculateCropDimensions(
+        sourceWidth,
+        sourceHeight,
+        settings.cropAspectRatio,
+        settings.cropMode || 'center',
+        settings.cropSizeMode || 'fit'
+      );
+      
+      console.log('✂️ Crop result:', cropResult);
+      console.log('📐 Original aspect ratio:', (sourceWidth / sourceHeight).toFixed(3));
+      console.log('📐 Target aspect ratio:', settings.cropAspectRatio.toFixed(3));
+      
+      sourceX = cropResult.x;
+      sourceY = cropResult.y;
+      sourceWidth = cropResult.width;
+      sourceHeight = cropResult.height;
+    }
+    
     const { width, height } = this.calculateDimensions(
-      image.naturalWidth,
-      image.naturalHeight,
+      sourceWidth,
+      sourceHeight,
       settings.maxWidth,
       settings.maxHeight,
       settings.maintainAspectRatio
@@ -103,8 +225,12 @@ export class ImageConverter {
     // Clear canvas
     ctx.clearRect(0, 0, width, height);
 
-    // Draw image
-    ctx.drawImage(image, 0, 0, width, height);
+    // Draw image with cropping if applied
+    ctx.drawImage(
+      image,
+      sourceX, sourceY, sourceWidth, sourceHeight, // Source rectangle (potentially cropped)
+      0, 0, width, height // Destination rectangle
+    );
 
     // Handle SVG output
     if (settings.outputFormat === 'svg') {
@@ -119,6 +245,11 @@ export class ImageConverter {
     // Handle ICO output
     if (settings.outputFormat === 'ico') {
       return await this.convertToIco(canvas, settings);
+    }
+
+    // Handle TIFF output
+    if (settings.outputFormat === 'tiff') {
+      return await this.convertToTiff(canvas, width, height, settings);
     }
 
     // Convert to blob for other formats
@@ -763,6 +894,151 @@ export class ImageConverter {
       throw new Error(`HEIC conversion failed: ${error}`);
     }
   }
+
+  private static async loadTiffAsImage(file: File): Promise<HTMLImageElement> {
+    if (!file || !file.name) {
+      throw new Error('Invalid TIFF file provided');
+    }
+    
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const arrayBuffer = e.target?.result as ArrayBuffer;
+          if (!arrayBuffer) {
+            reject(new Error('Failed to read TIFF file content'));
+            return;
+          }
+          
+          // Decode TIFF using the tiff library
+          const uint8Array = new Uint8Array(arrayBuffer);
+          const ifds = TIFF.decode(uint8Array);
+          
+          if (!ifds || ifds.length === 0) {
+            reject(new Error('No image data found in TIFF file'));
+            return;
+          }
+          
+          // Use the first IFD (page)
+          const ifd = ifds[0];
+          const width = ifd.width;
+          const height = ifd.height;
+          const data = ifd.data;
+          
+          // Create canvas to convert TIFF data to image
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Failed to get canvas context'));
+            return;
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          
+          // Create ImageData from TIFF data
+          const imageData = ctx.createImageData(width, height);
+          
+          // Convert TIFF data to RGBA format
+          if (ifd.alpha) {
+            // RGBA data
+            if (data instanceof Uint8Array) {
+              imageData.data.set(data);
+            } else if (data instanceof Uint16Array) {
+              // Convert 16-bit to 8-bit
+              for (let i = 0; i < data.length; i++) {
+                imageData.data[i] = Math.round(data[i] / 257); // 65535 / 255 ≈ 257
+              }
+            }
+          } else {
+            // RGB data (add alpha channel)
+            const channels = ifd.samplesPerPixel || 3;
+            for (let i = 0; i < width * height; i++) {
+              if (channels === 1) {
+                // Grayscale
+                const gray = data instanceof Uint16Array ? Math.round(data[i] / 257) : data[i];
+                imageData.data[i * 4] = gray;     // R
+                imageData.data[i * 4 + 1] = gray; // G
+                imageData.data[i * 4 + 2] = gray; // B
+                imageData.data[i * 4 + 3] = 255;  // A
+              } else {
+                // RGB
+                const r = data instanceof Uint16Array ? Math.round(data[i * 3] / 257) : data[i * 3];
+                const g = data instanceof Uint16Array ? Math.round(data[i * 3 + 1] / 257) : data[i * 3 + 1];
+                const b = data instanceof Uint16Array ? Math.round(data[i * 3 + 2] / 257) : data[i * 3 + 2];
+                
+                imageData.data[i * 4] = r;       // R
+                imageData.data[i * 4 + 1] = g;   // G
+                imageData.data[i * 4 + 2] = b;   // B
+                imageData.data[i * 4 + 3] = 255; // A
+              }
+            }
+          }
+          
+          // Put image data on canvas
+          ctx.putImageData(imageData, 0, 0);
+          
+          // Convert canvas to image
+          const img = new Image();
+          img.onload = () => {
+            URL.revokeObjectURL(img.src);
+            resolve(img);
+          };
+          img.onerror = (error) => {
+            URL.revokeObjectURL(img.src);
+            reject(new Error('Failed to load TIFF as image: ' + error));
+          };
+          
+          // Create blob URL from canvas
+          canvas.toBlob((blob) => {
+            if (blob) {
+              img.src = URL.createObjectURL(blob);
+            } else {
+              reject(new Error('Failed to create blob from TIFF canvas'));
+            }
+          }, 'image/png');
+          
+        } catch (error) {
+          reject(new Error('Error processing TIFF file: ' + error));
+        }
+      };
+      reader.onerror = (error) => reject(new Error('Failed to read TIFF file: ' + error));
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  private static async isTiff(file: File): Promise<boolean> {
+    if (!file || !file.name) return false;
+    
+    // Check file extension
+    const fileName = file.name.toLowerCase();
+    if (fileName.endsWith('.tiff') || fileName.endsWith('.tif')) {
+      return true;
+    }
+    
+    // Check MIME type
+    if (file.type === 'image/tiff' || file.type === 'image/tif') {
+      return true;
+    }
+    
+    // Check file signature (magic bytes)
+    try {
+      const header = await file.slice(0, 4).arrayBuffer();
+      const view = new DataView(header);
+      
+      // TIFF files start with either "II" (little-endian) or "MM" (big-endian)
+      // followed by 42 (0x002A)
+      const signature1 = view.getUint16(0, true);  // little-endian
+      const signature2 = view.getUint16(0, false); // big-endian
+      const magic1 = view.getUint16(2, true);      // little-endian
+      const magic2 = view.getUint16(2, false);     // big-endian
+      
+      return (signature1 === 0x4949 && magic1 === 42) ||  // "II" + 42 (little-endian)
+             (signature2 === 0x4D4D && magic2 === 42);    // "MM" + 42 (big-endian)
+    } catch {
+      return false;
+    }
+  }
   private static async convertRegularImage(
     file: File,
     settings: ConversionSettings
@@ -775,10 +1051,15 @@ export class ImageConverter {
     // Check if input is SVG
     const isSvgInput = (file.type === 'image/svg+xml') || file.name.toLowerCase().endsWith('.svg');
     
+    // Check if input is TIFF
+    const isTiffInput = await this.isTiff(file);
+    
     let img: HTMLImageElement;
     try {
       if (isSvgInput) {
         img = await this.loadSvgAsImage(file);
+      } else if (isTiffInput) {
+        img = await this.loadTiffAsImage(file);
       } else {
         img = await this.loadImage(file);
       }
@@ -817,8 +1098,9 @@ export class ImageConverter {
         throw new Error('Conversion cancelled');
       }
 
-      // Check if input is HEIC
+      // Check if input is HEIC or TIFF
       const isInputHeic = await isHeic(file);
+      const isInputTiff = await this.isTiff(file);
       onProgress?.(20);
 
       // Check for cancellation
@@ -861,7 +1143,24 @@ export class ImageConverter {
           // Check for SVG to SVG conversion
           const isSvgInput = (file.type === 'image/svg+xml') || file.name.toLowerCase().endsWith('.svg');
           
-          if (isSvgInput && settings.outputFormat === 'svg') {
+          // Check for TIFF to TIFF conversion
+          if (isInputTiff && settings.outputFormat === 'tiff') {
+            // TIFF to TIFF - check if resize or settings change is needed
+            if (settings.maxWidth || settings.maxHeight || 
+                settings.tiffCompression !== 'lzw' || 
+                settings.tiffBitDepth !== 8 || 
+                settings.tiffColorModel !== 'rgb') {
+              // Need to process, so convert through canvas
+              onProgress?.(40);
+              convertedBlob = await this.convertRegularImage(file, settings);
+              onProgress?.(80);
+            } else {
+              // No processing needed, just return original TIFF
+              onProgress?.(50);
+              convertedBlob = file;
+              onProgress?.(80);
+            }
+          } else if (isSvgInput && settings.outputFormat === 'svg') {
             // SVG to SVG - check if resize is needed
             if (settings.maxWidth || settings.maxHeight) {
               // Need to resize, so process through canvas
@@ -1097,12 +1396,16 @@ export class ImageConverter {
           // Load and process image
           let img: HTMLImageElement;
           const isInputHeic = await isHeic(file);
+          const isInputTiff = await this.isTiff(file);
           
           if (isInputHeic) {
             // Convert HEIC to canvas first
             const tempBlob = await this.convertFromHeic(file, { ...settings, outputFormat: 'jpeg' });
             const tempFile = new File([tempBlob], 'temp.jpg', { type: 'image/jpeg' });
             img = await this.loadImage(tempFile);
+          } else if (isInputTiff) {
+            // Load TIFF directly
+            img = await this.loadTiffAsImage(file);
           } else {
             const isSvgInput = (file.type === 'image/svg+xml') || file.name.toLowerCase().endsWith('.svg');
             if (isSvgInput) {
@@ -1236,6 +1539,374 @@ export class ImageConverter {
           : (error instanceof Error ? error.message : 'Failed to create multi-page PDF'),
         originalSize: files.reduce((sum, file) => sum + file.size, 0)
       };
+    }
+  }
+
+  private static async convertToTiff(
+    canvas: HTMLCanvasElement,
+    width: number,
+    height: number,
+    settings: ConversionSettings
+  ): Promise<Blob> {
+    try {
+      // Get TIFF settings with defaults
+      const compression = settings.tiffCompression || 'lzw';
+      const bitDepth = settings.tiffBitDepth || 8;
+      const colorModel = settings.tiffColorModel || 'rgb';
+      const resolutionX = settings.tiffResolutionX || 300;
+      const resolutionY = settings.tiffResolutionY || 300;
+      const resolutionUnit = settings.tiffResolutionUnit || 'inch';
+      const predictor = settings.tiffPredictor || 1;
+      const planarConfig = settings.tiffPlanarConfig || 'chunky';
+      const fillOrder = settings.tiffFillOrder || 'msb2lsb';
+      const photometric = settings.tiffPhotometric || 'rgb';
+      const tileSize = settings.tiffTileSize || 0;
+      const rowsPerStrip = settings.tiffRowsPerStrip || 8;
+
+      console.log('Converting to TIFF with settings:', {
+        compression,
+        bitDepth,
+        colorModel,
+        resolution: `${resolutionX}x${resolutionY} ${resolutionUnit}`,
+        predictor,
+        planarConfig,
+        fillOrder,
+        photometric,
+        tileSize,
+        rowsPerStrip
+      });
+
+      // Get image data from canvas
+      const ctx = canvas.getContext('2d')!;
+      const imageData = ctx.getImageData(0, 0, width, height);
+      
+      // Convert image data based on color model and bit depth
+      let processedData: Uint8Array | Uint16Array | Uint32Array;
+      let samplesPerPixel: number;
+      let bitsPerSample: number[];
+      
+      switch (colorModel) {
+        case 'grayscale':
+          samplesPerPixel = 1;
+          bitsPerSample = [bitDepth];
+          processedData = this.convertToGrayscale(imageData, bitDepth);
+          break;
+        case 'rgba':
+          samplesPerPixel = 4;
+          bitsPerSample = [bitDepth, bitDepth, bitDepth, bitDepth];
+          processedData = this.convertToRGBA(imageData, bitDepth);
+          break;
+        case 'cmyk':
+          samplesPerPixel = 4;
+          bitsPerSample = [bitDepth, bitDepth, bitDepth, bitDepth];
+          processedData = this.convertToCMYK(imageData, bitDepth);
+          break;
+        default: // 'rgb'
+          samplesPerPixel = 3;
+          bitsPerSample = [bitDepth, bitDepth, bitDepth];
+          processedData = this.convertToRGB(imageData, bitDepth);
+          break;
+      }
+
+      // Create TIFF structure manually since we need encoding capability
+      const tiffData = this.createTiffStructure({
+        width,
+        height,
+        imageData: processedData,
+        samplesPerPixel,
+        bitsPerSample,
+        compression,
+        photometric: this.getPhotometricInterpretation(colorModel),
+        resolutionX,
+        resolutionY,
+        resolutionUnit: resolutionUnit === 'inch' ? 2 : 3, // 2 = inch, 3 = centimeter
+        predictor,
+        planarConfig: planarConfig === 'chunky' ? 1 : 2,
+        fillOrder: fillOrder === 'msb2lsb' ? 1 : 2,
+        tileSize,
+        rowsPerStrip: tileSize === 0 ? rowsPerStrip : undefined
+      });
+
+      return new Blob([tiffData], { type: 'image/tiff' });
+    } catch (error) {
+      console.error('TIFF conversion failed:', error);
+      throw new Error(`Failed to convert to TIFF: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  }
+
+  private static convertToGrayscale(imageData: ImageData, bitDepth: number): Uint8Array | Uint16Array | Uint32Array {
+    const data = imageData.data;
+    const pixelCount = imageData.width * imageData.height;
+    
+    if (bitDepth === 8) {
+      const grayscaleData = new Uint8Array(pixelCount);
+      for (let i = 0; i < pixelCount; i++) {
+        const r = data[i * 4];
+        const g = data[i * 4 + 1];
+        const b = data[i * 4 + 2];
+        // Use standard grayscale conversion formula
+        grayscaleData[i] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+      }
+      return grayscaleData;
+    } else if (bitDepth === 16) {
+      const grayscaleData = new Uint16Array(pixelCount);
+      for (let i = 0; i < pixelCount; i++) {
+        const r = data[i * 4];
+        const g = data[i * 4 + 1];
+        const b = data[i * 4 + 2];
+        const gray = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+        grayscaleData[i] = (gray << 8) | gray; // Convert 8-bit to 16-bit
+      }
+      return grayscaleData;
+    } else {
+      // Default to 8-bit
+      return this.convertToGrayscale(imageData, 8);
+    }
+  }
+
+  private static convertToRGB(imageData: ImageData, bitDepth: number): Uint8Array | Uint16Array {
+    const data = imageData.data;
+    const pixelCount = imageData.width * imageData.height;
+    
+    if (bitDepth === 8) {
+      const rgbData = new Uint8Array(pixelCount * 3);
+      for (let i = 0; i < pixelCount; i++) {
+        rgbData[i * 3] = data[i * 4];     // R
+        rgbData[i * 3 + 1] = data[i * 4 + 1]; // G
+        rgbData[i * 3 + 2] = data[i * 4 + 2]; // B
+      }
+      return rgbData;
+    } else if (bitDepth === 16) {
+      const rgbData = new Uint16Array(pixelCount * 3);
+      for (let i = 0; i < pixelCount; i++) {
+        rgbData[i * 3] = (data[i * 4] << 8) | data[i * 4];         // R
+        rgbData[i * 3 + 1] = (data[i * 4 + 1] << 8) | data[i * 4 + 1]; // G
+        rgbData[i * 3 + 2] = (data[i * 4 + 2] << 8) | data[i * 4 + 2]; // B
+      }
+      return rgbData;
+    } else {
+      // Default to 8-bit
+      return this.convertToRGB(imageData, 8);
+    }
+  }
+
+  private static convertToRGBA(imageData: ImageData, bitDepth: number): Uint8Array | Uint16Array {
+    const data = imageData.data;
+    const pixelCount = imageData.width * imageData.height;
+    
+    if (bitDepth === 8) {
+      // Data is already in RGBA format for 8-bit
+      return new Uint8Array(data);
+    } else if (bitDepth === 16) {
+      const rgbaData = new Uint16Array(pixelCount * 4);
+      for (let i = 0; i < pixelCount; i++) {
+        rgbaData[i * 4] = (data[i * 4] << 8) | data[i * 4];         // R
+        rgbaData[i * 4 + 1] = (data[i * 4 + 1] << 8) | data[i * 4 + 1]; // G
+        rgbaData[i * 4 + 2] = (data[i * 4 + 2] << 8) | data[i * 4 + 2]; // B
+        rgbaData[i * 4 + 3] = (data[i * 4 + 3] << 8) | data[i * 4 + 3]; // A
+      }
+      return rgbaData;
+    } else {
+      // Default to 8-bit
+      return this.convertToRGBA(imageData, 8);
+    }
+  }
+
+  private static convertToCMYK(imageData: ImageData, bitDepth: number): Uint8Array | Uint16Array {
+    const data = imageData.data;
+    const pixelCount = imageData.width * imageData.height;
+    
+    if (bitDepth === 8) {
+      const cmykData = new Uint8Array(pixelCount * 4);
+      for (let i = 0; i < pixelCount; i++) {
+        const r = data[i * 4] / 255;
+        const g = data[i * 4 + 1] / 255;
+        const b = data[i * 4 + 2] / 255;
+        
+        // Convert RGB to CMYK
+        const k = 1 - Math.max(r, g, b);
+        const c = k === 1 ? 0 : (1 - r - k) / (1 - k);
+        const m = k === 1 ? 0 : (1 - g - k) / (1 - k);
+        const y = k === 1 ? 0 : (1 - b - k) / (1 - k);
+        
+        cmykData[i * 4] = Math.round(c * 255);     // C
+        cmykData[i * 4 + 1] = Math.round(m * 255); // M
+        cmykData[i * 4 + 2] = Math.round(y * 255); // Y
+        cmykData[i * 4 + 3] = Math.round(k * 255); // K
+      }
+      return cmykData;
+    } else {
+      // For simplicity, convert to 8-bit first
+      return this.convertToCMYK(imageData, 8);
+    }
+  }
+
+  private static getPhotometricInterpretation(colorModel: string): number {
+    switch (colorModel) {
+      case 'grayscale': return 1; // BlackIsZero
+      case 'rgb': 
+      case 'rgba': return 2; // RGB
+      case 'cmyk': return 5; // Separated (CMYK)
+      default: return 2; // RGB
+    }
+  }
+
+  private static createTiffStructure(options: {
+    width: number;
+    height: number;
+    imageData: Uint8Array | Uint16Array | Uint32Array;
+    samplesPerPixel: number;
+    bitsPerSample: number[];
+    compression: string;
+    photometric: number;
+    resolutionX: number;
+    resolutionY: number;
+    resolutionUnit: number;
+    predictor: number;
+    planarConfig: number;
+    fillOrder: number;
+    tileSize: number;
+          rowsPerStrip?: number;
+    }): ArrayBuffer {
+      // This is a simplified TIFF implementation
+      // For production use, consider using a more robust TIFF library
+      
+      const {
+        width,
+        height,
+        imageData,
+        samplesPerPixel,
+        bitsPerSample,
+        compression,
+        photometric,
+        resolutionX,
+        resolutionY,
+        resolutionUnit,
+        predictor,
+        planarConfig,
+        fillOrder: _fillOrder, // Mark as used for TIFF structure
+        tileSize,
+        rowsPerStrip = 8
+      } = options;
+
+    // Calculate compressed data (simplified - just use raw data for now)
+    let compressedData: Uint8Array;
+    
+    if (compression === 'none') {
+      compressedData = new Uint8Array(imageData.buffer);
+    } else {
+      // For demo purposes, we'll use uncompressed data
+      // In production, implement actual compression algorithms
+      console.warn(`TIFF compression '${compression}' not fully implemented, using uncompressed data`);
+      compressedData = new Uint8Array(imageData.buffer);
+    }
+
+    // Create basic TIFF structure
+    const tiffHeader = new ArrayBuffer(8);
+    const headerView = new DataView(tiffHeader);
+    
+    // Write TIFF header (little-endian)
+    headerView.setUint16(0, 0x4949, true); // "II" - little endian
+    headerView.setUint16(2, 42, true);     // TIFF magic number
+    headerView.setUint32(4, 8, true);      // Offset to first IFD
+    
+    // Create IFD (Image File Directory)
+    const ifdEntries = [
+      { tag: 256, type: 4, count: 1, value: width },           // ImageWidth
+      { tag: 257, type: 4, count: 1, value: height },          // ImageLength
+      { tag: 258, type: 3, count: samplesPerPixel, value: bitsPerSample }, // BitsPerSample
+      { tag: 259, type: 3, count: 1, value: this.getCompressionValue(compression) }, // Compression
+      { tag: 262, type: 3, count: 1, value: photometric },     // PhotometricInterpretation
+      { tag: 273, type: 4, count: 1, value: 0 },               // StripOffsets (will be updated)
+      { tag: 277, type: 3, count: 1, value: samplesPerPixel }, // SamplesPerPixel
+      { tag: 278, type: 4, count: 1, value: tileSize === 0 ? rowsPerStrip : height }, // RowsPerStrip
+      { tag: 279, type: 4, count: 1, value: compressedData.length }, // StripByteCounts
+      { tag: 282, type: 5, count: 1, value: 0 },               // XResolution (rational)
+      { tag: 283, type: 5, count: 1, value: 0 },               // YResolution (rational)
+      { tag: 284, type: 3, count: 1, value: planarConfig },    // PlanarConfiguration
+      { tag: 296, type: 3, count: 1, value: resolutionUnit },  // ResolutionUnit
+    ];
+
+    // Add predictor if compression supports it
+    if (compression === 'lzw' || compression === 'deflate') {
+      ifdEntries.push({ tag: 317, type: 3, count: 1, value: predictor }); // Predictor
+    }
+
+    // Calculate total size needed
+    const ifdSize = 2 + (ifdEntries.length * 12) + 4; // entry count + entries + next IFD offset
+    const rationalsSize = 16; // Two rational values for X and Y resolution
+    const dataOffset = 8 + ifdSize + rationalsSize;
+    const totalSize = dataOffset + compressedData.length;
+
+    // Create final buffer
+    const buffer = new ArrayBuffer(totalSize);
+    const view = new DataView(buffer);
+    const uint8View = new Uint8Array(buffer);
+
+    // Copy header
+    uint8View.set(new Uint8Array(tiffHeader), 0);
+
+    // Write IFD
+    let offset = 8;
+    view.setUint16(offset, ifdEntries.length, true); // Number of entries
+    offset += 2;
+
+    // Write IFD entries
+    for (let i = 0; i < ifdEntries.length; i++) {
+      const entry = ifdEntries[i];
+      view.setUint16(offset, entry.tag, true);
+      view.setUint16(offset + 2, entry.type, true);
+      view.setUint32(offset + 4, entry.count, true);
+      
+      if (entry.tag === 273) { // StripOffsets
+        view.setUint32(offset + 8, dataOffset, true);
+      } else if (entry.tag === 282) { // XResolution
+        view.setUint32(offset + 8, 8 + ifdSize, true); // Offset to rational
+      } else if (entry.tag === 283) { // YResolution
+        view.setUint32(offset + 8, 8 + ifdSize + 8, true); // Offset to rational
+             } else if (entry.tag === 258 && Array.isArray(entry.value)) { // BitsPerSample array
+         if (entry.value.length === 1) {
+           view.setUint32(offset + 8, entry.value[0], true);
+         } else {
+           // For multiple values, would need to store separately
+           view.setUint32(offset + 8, entry.value[0], true); // Simplified
+         }
+       } else {
+         view.setUint32(offset + 8, typeof entry.value === 'number' ? entry.value : entry.value[0], true);
+       }
+      
+      offset += 12;
+    }
+
+    // Next IFD offset (0 = no more IFDs)
+    view.setUint32(offset, 0, true);
+    offset += 4;
+
+    // Write resolution rationals
+    // X Resolution
+    view.setUint32(offset, resolutionX, true);     // Numerator
+    view.setUint32(offset + 4, 1, true);          // Denominator
+    offset += 8;
+    
+    // Y Resolution
+    view.setUint32(offset, resolutionY, true);     // Numerator
+    view.setUint32(offset + 4, 1, true);          // Denominator
+    offset += 8;
+
+    // Write image data
+    uint8View.set(compressedData, dataOffset);
+
+    return buffer;
+  }
+
+  private static getCompressionValue(compression: string): number {
+    switch (compression) {
+      case 'none': return 1;       // No compression
+      case 'lzw': return 5;        // LZW
+      case 'packbits': return 32773; // PackBits
+      case 'deflate': return 8;    // Deflate/ZIP
+      case 'jpeg': return 7;       // JPEG
+      default: return 1;           // No compression
     }
   }
 }
