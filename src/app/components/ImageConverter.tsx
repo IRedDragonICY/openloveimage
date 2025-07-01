@@ -14,6 +14,12 @@ const ImageConverterApp = () => {
     removeMetadata: false,
     compressionLevel: 5,
     
+    // Crop settings
+    enableCrop: false,
+    cropAspectRatio: undefined,
+    cropMode: 'center',
+    cropSizeMode: 'fit',
+    
     // Format-specific defaults
     progressive: false,
     optimizeHuffman: false,
@@ -29,6 +35,20 @@ const ImageConverterApp = () => {
     smoothing: 1.0,
     simplification: 1.0,
     vectorQuality: 'balanced',
+    
+    // TIFF-specific defaults
+    tiffCompression: 'lzw',
+    tiffBitDepth: 8,
+    tiffColorModel: 'rgb',
+    tiffPredictor: 1,
+    tiffTileSize: 0,
+    tiffResolutionUnit: 'inch',
+    tiffResolutionX: 300,
+    tiffResolutionY: 300,
+    tiffFillOrder: 'msb2lsb',
+    tiffPhotometric: 'rgb',
+    tiffPlanarConfig: 'chunky',
+    tiffRowsPerStrip: 8,
   });
 
   const handleProcessFiles = useCallback(async (

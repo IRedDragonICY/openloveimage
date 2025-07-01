@@ -50,6 +50,7 @@ import BeforeAfterPreview from './BeforeAfterPreview';
 import ImageCropEditor from './ImageCropEditor';
 import ImageMetadataViewer from './ImageMetadataViewer';
 import { heicTo, isHeic } from 'heic-to';
+import { useSettings } from './SettingsContext';
 
 // Helper function to get actual file type including HEIC
 const getActualFileType = (file: File): string => {
@@ -105,6 +106,7 @@ interface UnifiedFileManagerProps {
 }
 
 const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }: UnifiedFileManagerProps) => {
+  const { settings } = useSettings();
   const [files, setFiles] = useState<File[]>([]);
   const [processedFiles, setProcessedFiles] = useState<ProcessedFile[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -1123,21 +1125,24 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
                             sx={{ 
                               width: 56, 
                               height: 56, 
-                              cursor: 'pointer',
+                              cursor: settings.enablePreview ? 'pointer' : 'default',
                               border: croppedFiles[originalIndex] ? '2px solid' : '2px solid transparent',
                               borderColor: croppedFiles[originalIndex] ? 'success.main' : 'transparent',
                               transition: 'all 0.2s ease',
-                              '&:hover': {
+                              opacity: settings.enablePreview ? 1 : 0.7,
+                              '&:hover': settings.enablePreview ? {
                                 transform: 'scale(1.05)',
                                 border: '2px solid',
                                 borderColor: croppedFiles[originalIndex] ? 'success.dark' : 'primary.main',
-                              }
+                              } : {}
                             }}
                             onClick={() => {
-                              const fileToPreview = croppedFiles[originalIndex] || file.originalFile;
-                              const fileName = croppedFiles[originalIndex]?.name || file.originalFile?.name;
-                              if (fileToPreview && fileName) {
-                                handlePreviewClick(fileToPreview, fileName, false);
+                              if (settings.enablePreview) {
+                                const fileToPreview = croppedFiles[originalIndex] || file.originalFile;
+                                const fileName = croppedFiles[originalIndex]?.name || file.originalFile?.name;
+                                if (fileToPreview && fileName) {
+                                  handlePreviewClick(fileToPreview, fileName, false);
+                                }
                               }
                             }}
                           >
@@ -1410,37 +1415,41 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
                           {/* Completed State Actions */}
                           {file.status === 'completed' && file.convertedBlob && (
                             <>
-                              <IconButton 
-                                onClick={() => handleBeforeAfterClick(file)}
-                                color="secondary"
-                                size="small"
-                                title="Compare before & after"
-                                sx={{
-                                  bgcolor: 'action.hover',
-                                  '&:hover': { bgcolor: 'action.selected' }
-                                }}
-                              >
-                                <Compare />
-                              </IconButton>
-                              <IconButton 
-                                onClick={() => file.originalFile && handlePreviewClick(
-                                  file.convertedBlob!,
-                                  generateOutputFileName(file.originalFile.name, file.outputFormat),
-                                  true,
-                                  file.originalFile,
-                                  file.convertedSize,
-                                  file.outputFormat
-                                )}
-                                color="info"
-                                size="small"
-                                title="Preview converted image"
-                                sx={{
-                                  bgcolor: 'action.hover',
-                                  '&:hover': { bgcolor: 'action.selected' }
-                                }}
-                              >
-                                <Visibility />
-                              </IconButton>
+                              {settings.enablePreview && (
+                                <>
+                                  <IconButton 
+                                    onClick={() => handleBeforeAfterClick(file)}
+                                    color="secondary"
+                                    size="small"
+                                    title="Compare before & after"
+                                    sx={{
+                                      bgcolor: 'action.hover',
+                                      '&:hover': { bgcolor: 'action.selected' }
+                                    }}
+                                  >
+                                    <Compare />
+                                  </IconButton>
+                                  <IconButton 
+                                    onClick={() => file.originalFile && handlePreviewClick(
+                                      file.convertedBlob!,
+                                      generateOutputFileName(file.originalFile.name, file.outputFormat),
+                                      true,
+                                      file.originalFile,
+                                      file.convertedSize,
+                                      file.outputFormat
+                                    )}
+                                    color="info"
+                                    size="small"
+                                    title="Preview converted image"
+                                    sx={{
+                                      bgcolor: 'action.hover',
+                                      '&:hover': { bgcolor: 'action.selected' }
+                                    }}
+                                  >
+                                    <Visibility />
+                                  </IconButton>
+                                </>
+                              )}
                               <IconButton 
                                 onClick={() => downloadSingleFile(file)}
                                 color="success"
@@ -1544,7 +1553,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
       )}
 
       {/* Preview Modals */}
-      {previewFile && (
+      {settings.enablePreview && previewFile && (
         <ImagePreview
           file={previewFile.file}
           fileName={previewFile.fileName}
@@ -1557,7 +1566,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
         />
       )}
 
-      {beforeAfterFile && beforeAfterFile.convertedBlob && beforeAfterFile.originalFile && (
+      {settings.enablePreview && beforeAfterFile && beforeAfterFile.convertedBlob && beforeAfterFile.originalFile && (
         <BeforeAfterPreview
           originalFile={beforeAfterFile.originalFile}
           convertedFile={beforeAfterFile.convertedBlob}

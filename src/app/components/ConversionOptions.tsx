@@ -19,7 +19,7 @@ import {
   Chip,
   Alert,
 } from '@mui/material';
-import { Settings, Tune } from '@mui/icons-material';
+import { Settings, Tune, Crop } from '@mui/icons-material';
 
 export interface ConversionSettings {
   outputFormat: string;
@@ -29,6 +29,12 @@ export interface ConversionSettings {
   maintainAspectRatio: boolean;
   removeMetadata: boolean;
   compressionLevel: number;
+  
+  // Crop settings
+  enableCrop?: boolean;
+  cropAspectRatio?: number; // Target aspect ratio (width/height)
+  cropMode?: 'center' | 'smart'; // How to position the crop
+  cropSizeMode?: 'fit' | 'fill' | 'extend'; // How to size the crop relative to image
   
   // Format-specific settings
   // JPEG specific
@@ -54,6 +60,20 @@ export interface ConversionSettings {
   smoothing?: number;
   simplification?: number;
   vectorQuality?: string;
+  
+  // TIFF specific
+  tiffCompression?: string; // 'none' | 'lzw' | 'packbits' | 'deflate' | 'jpeg'
+  tiffBitDepth?: number; // 1, 8, 16, 32
+  tiffColorModel?: string; // 'rgb' | 'rgba' | 'grayscale' | 'cmyk'
+  tiffPredictor?: number; // 1 (none), 2 (horizontal differencing), 3 (floating point)
+  tiffTileSize?: number; // For tiled TIFF, 0 = strips
+  tiffResolutionUnit?: string; // 'inch' | 'centimeter'
+  tiffResolutionX?: number; // DPI/DPCM for X direction
+  tiffResolutionY?: number; // DPI/DPCM for Y direction
+  tiffFillOrder?: string; // 'msb2lsb' | 'lsb2msb'
+  tiffPhotometric?: string; // 'rgb' | 'palette' | 'mask' | 'separated'
+  tiffPlanarConfig?: string; // 'chunky' | 'planar'
+  tiffRowsPerStrip?: number; // Number of rows per strip (for strip-based TIFF)
   
   // PDF specific
   pageSize?: string;
@@ -85,6 +105,7 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
     { value: 'jpeg', label: 'JPEG', description: 'Best for photos and realistic images' },
     { value: 'png', label: 'PNG', description: 'Lossless with transparency support' },
     { value: 'webp', label: 'WebP', description: 'Modern format, excellent compression' },
+    { value: 'tiff', label: 'TIFF', description: 'Professional format with advanced compression' },
     { value: 'svg', label: 'SVG', description: 'True vector format, infinite scalability' },
     { value: 'pdf', label: 'PDF', description: 'Professional document format, printable' },
     { value: 'heic', label: 'HEIC', description: 'Apple format, efficient compression' },
@@ -95,10 +116,11 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
   const isJpeg = settings.outputFormat === 'jpeg';
   const isPng = settings.outputFormat === 'png';
   const isWebp = settings.outputFormat === 'webp';
+  const isTiff = settings.outputFormat === 'tiff';
   const isSvg = settings.outputFormat === 'svg';
   const isPdf = settings.outputFormat === 'pdf';
   const isIco = settings.outputFormat === 'ico';
-  const supportsQuality = isJpeg || isWebp || isPdf || (!isSvg && !isPng && !isIco);
+  const supportsQuality = isJpeg || isWebp || isTiff || isPdf || (!isSvg && !isPng && !isIco);
 
   // Common slider styling to prevent label cutoff
   const sliderStyles = {
@@ -322,6 +344,301 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
                   ]}
                   sx={sliderStyles}
                 />
+              </Box>
+            </Box>
+          )}
+
+          {/* TIFF Specific Options */}
+          {isTiff && (
+            <Box>
+              <Typography variant="h6" sx={{ mb: 2 }}>TIFF Export Options</Typography>
+              
+              {/* Compression and Format Settings Row */}
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: { xs: 'column', md: 'row' }, 
+                gap: 3,
+                mb: 3
+              }}>
+                {/* Compression Method */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Compression Method</InputLabel>
+                    <Select
+                      value={settings.tiffCompression || 'lzw'}
+                      label="Compression Method"
+                      onChange={(e) => handleChange('tiffCompression', e.target.value)}
+                    >
+                      <MenuItem value="none">
+                        <Box>
+                          <Typography variant="body1">None (Uncompressed)</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Largest files, fastest processing
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                      <MenuItem value="lzw">
+                        <Box>
+                          <Typography variant="body1">LZW Compression</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Lossless, good for graphics (default)
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                      <MenuItem value="packbits">
+                        <Box>
+                          <Typography variant="body1">PackBits</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Simple lossless compression
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                      <MenuItem value="deflate">
+                        <Box>
+                          <Typography variant="body1">Deflate (ZIP)</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Better compression than LZW
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                {/* Bit Depth */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Bit Depth</InputLabel>
+                    <Select
+                      value={settings.tiffBitDepth || 8}
+                      label="Bit Depth"
+                      onChange={(e) => handleChange('tiffBitDepth', Number(e.target.value))}
+                    >
+                      <MenuItem value={1}>1-bit (Black & White)</MenuItem>
+                      <MenuItem value={8}>8-bit (256 colors per channel)</MenuItem>
+                      <MenuItem value={16}>16-bit (65,536 colors per channel)</MenuItem>
+                      <MenuItem value={32}>32-bit (Full HDR support)</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                {/* Color Model */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Color Model</InputLabel>
+                    <Select
+                      value={settings.tiffColorModel || 'rgb'}
+                      label="Color Model"
+                      onChange={(e) => handleChange('tiffColorModel', e.target.value)}
+                    >
+                      <MenuItem value="rgb">RGB (Red, Green, Blue)</MenuItem>
+                      <MenuItem value="rgba">RGBA (RGB + Alpha)</MenuItem>
+                      <MenuItem value="grayscale">Grayscale</MenuItem>
+                      <MenuItem value="cmyk">CMYK (Print colors)</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+              </Box>
+
+              {/* Resolution Settings Row */}
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: { xs: 'column', md: 'row' }, 
+                gap: 3,
+                mb: 3
+              }}>
+                {/* Resolution Unit */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Resolution Unit</InputLabel>
+                    <Select
+                      value={settings.tiffResolutionUnit || 'inch'}
+                      label="Resolution Unit"
+                      onChange={(e) => handleChange('tiffResolutionUnit', e.target.value)}
+                    >
+                      <MenuItem value="inch">Dots per Inch (DPI)</MenuItem>
+                      <MenuItem value="centimeter">Dots per Centimeter (DPCM)</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                {/* X Resolution */}
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label={`X Resolution (${settings.tiffResolutionUnit === 'inch' ? 'DPI' : 'DPCM'})`}
+                    type="number"
+                    value={settings.tiffResolutionX || 300}
+                    onChange={(e) => handleChange('tiffResolutionX', Number(e.target.value))}
+                    helperText="Horizontal resolution"
+                  />
+                </Box>
+
+                {/* Y Resolution */}
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label={`Y Resolution (${settings.tiffResolutionUnit === 'inch' ? 'DPI' : 'DPCM'})`}
+                    type="number"
+                    value={settings.tiffResolutionY || 300}
+                    onChange={(e) => handleChange('tiffResolutionY', Number(e.target.value))}
+                    helperText="Vertical resolution"
+                  />
+                </Box>
+              </Box>
+
+              {/* Advanced TIFF Settings */}
+              <Typography variant="h6" sx={{ mb: 2 }}>Advanced TIFF Settings</Typography>
+
+              {/* Predictor and Structure Settings */}
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: { xs: 'column', md: 'row' }, 
+                gap: 3,
+                mb: 3
+              }}>
+                {/* Predictor */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Predictor</InputLabel>
+                    <Select
+                      value={settings.tiffPredictor || 1}
+                      label="Predictor"
+                      onChange={(e) => handleChange('tiffPredictor', Number(e.target.value))}
+                    >
+                      <MenuItem value={1}>None (Default)</MenuItem>
+                      <MenuItem value={2}>Horizontal Differencing</MenuItem>
+                      <MenuItem value={3}>Floating Point Predictor</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                {/* Planar Configuration */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Planar Configuration</InputLabel>
+                    <Select
+                      value={settings.tiffPlanarConfig || 'chunky'}
+                      label="Planar Configuration"
+                      onChange={(e) => handleChange('tiffPlanarConfig', e.target.value)}
+                    >
+                      <MenuItem value="chunky">
+                        <Box>
+                          <Typography variant="body1">Chunky (Interleaved)</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            RGBRGBRGB... (standard)
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                      <MenuItem value="planar">
+                        <Box>
+                          <Typography variant="body1">Planar (Separate)</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            RRR...GGG...BBB... (separate channels)
+                          </Typography>
+                        </Box>
+                      </MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+
+                {/* Fill Order */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Fill Order</InputLabel>
+                    <Select
+                      value={settings.tiffFillOrder || 'msb2lsb'}
+                      label="Fill Order"
+                      onChange={(e) => handleChange('tiffFillOrder', e.target.value)}
+                    >
+                      <MenuItem value="msb2lsb">MSB to LSB (Standard)</MenuItem>
+                      <MenuItem value="lsb2msb">LSB to MSB</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+              </Box>
+
+              {/* Structure Settings */}
+              <Box sx={{ 
+                display: 'flex', 
+                flexDirection: { xs: 'column', md: 'row' }, 
+                gap: 3,
+                mb: 3
+              }}>
+                {/* Tile Size */}
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="Tile Size (0 = strips)"
+                    type="number"
+                    value={settings.tiffTileSize || 0}
+                    onChange={(e) => handleChange('tiffTileSize', Number(e.target.value))}
+                    helperText="0 for strip-based, >0 for tiled TIFF"
+                  />
+                </Box>
+
+                {/* Rows Per Strip */}
+                <Box sx={{ flex: 1 }}>
+                  <TextField
+                    fullWidth
+                    label="Rows Per Strip"
+                    type="number"
+                    value={settings.tiffRowsPerStrip || 8}
+                    onChange={(e) => handleChange('tiffRowsPerStrip', Number(e.target.value))}
+                    helperText="Only used for strip-based TIFF"
+                    disabled={settings.tiffTileSize !== 0}
+                  />
+                </Box>
+
+                {/* Photometric Interpretation */}
+                <Box sx={{ flex: 1 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Photometric</InputLabel>
+                    <Select
+                      value={settings.tiffPhotometric || 'rgb'}
+                      label="Photometric"
+                      onChange={(e) => handleChange('tiffPhotometric', e.target.value)}
+                    >
+                      <MenuItem value="rgb">RGB Color</MenuItem>
+                      <MenuItem value="palette">Palette Color</MenuItem>
+                      <MenuItem value="mask">Transparency Mask</MenuItem>
+                      <MenuItem value="separated">Color Separations</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
+              </Box>
+
+              {/* Information and Tips */}
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                  🔧 TIFF Configuration Tips:
+                </Typography>
+                <Typography variant="body2">
+                  • <strong>LZW compression</strong> is best for most images (good compression, widely supported)<br/>
+                  • <strong>Deflate</strong> provides better compression but may have compatibility issues<br/>
+                  • <strong>8-bit RGB</strong> is standard for photos, <strong>16-bit</strong> for professional work<br/>
+                  • <strong>300 DPI</strong> is print quality, <strong>72-96 DPI</strong> for screen use<br/>
+                  • <strong>Strips</strong> are more compatible, <strong>tiles</strong> better for large images
+                </Typography>
+              </Alert>
+
+              {/* Compression Information */}
+              <Box sx={{ 
+                p: 2, 
+                bgcolor: settings.tiffCompression === 'none' ? 'rgba(244, 67, 54, 0.1)' : 
+                        settings.tiffCompression === 'lzw' ? 'rgba(76, 175, 80, 0.1)' : 
+                        'rgba(33, 150, 243, 0.1)', 
+                borderRadius: 1 
+              }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, mb: 1 }}>
+                  📦 Current Settings: {settings.tiffBitDepth || 8}-bit {(settings.tiffColorModel || 'rgb').toUpperCase()} with {settings.tiffCompression || 'LZW'} compression
+                </Typography>
+                <Typography variant="caption" display="block" color="text.secondary">
+                  {settings.tiffCompression === 'none' && 'Uncompressed TIFF - Largest file size, fastest processing, maximum compatibility'}
+                  {settings.tiffCompression === 'lzw' && 'LZW Compression - Good balance of size and compatibility, widely supported'}
+                  {settings.tiffCompression === 'packbits' && 'PackBits Compression - Simple compression, good compatibility'}
+                  {settings.tiffCompression === 'deflate' && 'Deflate Compression - Best compression ratio, may have compatibility issues with older software'}
+                </Typography>
               </Box>
             </Box>
           )}
@@ -663,6 +980,202 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
 
           <Divider sx={{ my: 2 }} />
           
+          {/* Crop Options Header */}
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <Crop sx={{ mr: 2, color: 'primary.main' }} />
+            <Typography variant="h6">Crop Options</Typography>
+          </Box>
+
+          {/* Crop Settings */}
+          <Card variant="outlined" sx={{ p: 2, mb: 3 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.enableCrop || false}
+                  onChange={(e) => handleChange('enableCrop', e.target.checked)}
+                />
+              }
+              label="Enable Automatic Crop"
+            />
+            
+            {settings.enableCrop && (
+              <Box sx={{ mt: 2 }}>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Crop Aspect Ratio</InputLabel>
+                  <Select
+                    value={settings.cropAspectRatio ? String(settings.cropAspectRatio) : ''}
+                    label="Crop Aspect Ratio"
+                    onChange={(e) => handleChange('cropAspectRatio', e.target.value === '' ? undefined : Number(e.target.value))}
+                  >
+                    <MenuItem value="">
+                      <Typography variant="body1">No Crop</Typography>
+                    </MenuItem>
+                    <MenuItem value={1}>
+                      <Box>
+                        <Typography variant="body1">1:1 (Square)</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Perfect for social media profiles
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value={16/9}>
+                      <Box>
+                        <Typography variant="body1">16:9 (Widescreen)</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Standard for videos and monitors
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value={4/3}>
+                      <Box>
+                        <Typography variant="body1">4:3 (Classic)</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Traditional photo format
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value={3/2}>
+                      <Box>
+                        <Typography variant="body1">3:2 (Photo)</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Common digital camera format
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value={9/16}>
+                      <Box>
+                        <Typography variant="body1">9:16 (Vertical)</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Instagram Stories, TikTok
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value={4/5}>
+                      <Box>
+                        <Typography variant="body1">4:5 (Instagram)</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Instagram portrait posts
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  </Select>
+                </FormControl>
+                
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Crop Position</InputLabel>
+                  <Select
+                    value={settings.cropMode || 'center'}
+                    label="Crop Position"
+                    onChange={(e) => handleChange('cropMode', e.target.value)}
+                  >
+                    <MenuItem value="center">
+                      <Box>
+                        <Typography variant="body1">Center</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Crop from the center of the image
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="smart">
+                      <Box>
+                        <Typography variant="body1">Smart</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Automatically detect best crop area
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  </Select>
+                </FormControl>
+                
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Crop Size Mode</InputLabel>
+                  <Select
+                    value={settings.cropSizeMode || 'fit'}
+                    label="Crop Size Mode"
+                    onChange={(e) => handleChange('cropSizeMode', e.target.value)}
+                  >
+                    <MenuItem value="fit">
+                      <Box>
+                        <Typography variant="body1">Fit to Image</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Crop stays within image boundaries
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="fill">
+                      <Box>
+                        <Typography variant="body1">Fill Longest Side</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Use full longest dimension of image
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                    <MenuItem value="extend">
+                      <Box>
+                        <Typography variant="body1">Extend Beyond Frame</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Crop can extend beyond visible frame
+                        </Typography>
+                      </Box>
+                    </MenuItem>
+                  </Select>
+                </FormControl>
+                
+                <Alert severity="info" sx={{ mt: 2 }}>
+                  <Typography variant="body2">
+                                         {Math.abs((settings.cropAspectRatio || 0) - 1) < 0.001 && (
+                       <>
+                         <strong>1:1 Crop:</strong> Gambar akan dipotong menjadi persegi. 
+                         Jika tinggi 7680px, lebar akan menjadi 7680px.
+                       </>
+                     )}
+                     {Math.abs((settings.cropAspectRatio || 0) - 16/9) < 0.001 && (
+                       <>
+                         <strong>16:9 Crop:</strong> Format widescreen standar untuk video dan monitor.
+                       </>
+                     )}
+                     {Math.abs((settings.cropAspectRatio || 0) - 4/3) < 0.001 && (
+                       <>
+                         <strong>4:3 Crop:</strong> Format foto klasik, sering digunakan untuk cetakan.
+                       </>
+                     )}
+                     {Math.abs((settings.cropAspectRatio || 0) - 3/2) < 0.001 && (
+                       <>
+                         <strong>3:2 Crop:</strong> Format kamera digital umum.
+                       </>
+                     )}
+                     {Math.abs((settings.cropAspectRatio || 0) - 9/16) < 0.001 && (
+                       <>
+                         <strong>9:16 Crop:</strong> Format vertikal untuk Instagram Stories dan TikTok.
+                       </>
+                     )}
+                     {Math.abs((settings.cropAspectRatio || 0) - 4/5) < 0.001 && (
+                       <>
+                         <strong>4:5 Crop:</strong> Format portrait Instagram yang optimal.
+                       </>
+                     )}
+                                         {!settings.cropAspectRatio && (
+                       <>Pilih rasio aspek untuk memotong gambar secara otomatis.</>
+                     )}
+                     <br/><br/>
+                     <strong>Crop Size Mode:</strong>
+                     {settings.cropSizeMode === 'fit' && (
+                       <> Crop akan menyesuaikan dalam batas gambar yang terlihat.</>
+                     )}
+                     {settings.cropSizeMode === 'fill' && (
+                       <> Menggunakan sisi terpanjang penuh untuk mendapat resolusi maksimal.</>
+                     )}
+                     {settings.cropSizeMode === 'extend' && (
+                       <> Crop dapat melampaui frame - hasil lebih besar dari gambar asli.</>
+                     )}
+                   </Typography>
+                 </Alert>
+              </Box>
+            )}
+          </Card>
+
+          <Divider sx={{ my: 2 }} />
+          
           {/* Resize Options Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
             <Tune sx={{ mr: 2, color: 'primary.main' }} />
@@ -991,6 +1504,24 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
                   • Quality: Lossless, optimized for small sizes<br/>
                   • Use case: Desktop icons, website favicons, application resources<br/>
                   • Platform: Primarily Windows, but supported across platforms for favicons
+                </Typography>
+              </Box>
+            )}
+
+            {isTiff && (
+              <Box sx={{ p: 2, bgcolor: 'rgba(103, 58, 183, 0.1)', borderRadius: 1 }}>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  <strong>TIFF - Tagged Image File Format</strong>
+                </Typography>
+                <Typography variant="caption" display="block" color="text.secondary">
+                  • Best for: Professional photography, high-quality scans, printing, archival storage<br/>
+                  • Type: Flexible bitmap format with advanced features<br/>
+                  • Compression: Lossless options (LZW, Deflate, PackBits) or uncompressed<br/>
+                  • Features: Multiple compression types, high bit depths, metadata support<br/>
+                  • Quality: Perfect quality preservation with lossless compression<br/>
+                  • Use case: Professional photography, pre-press, scientific imaging, archival<br/>
+                  • Compatibility: Industry standard, supported by all professional image software<br/>
+                  • Resolution: Supports very high resolutions and multiple color models
                 </Typography>
               </Box>
             )}

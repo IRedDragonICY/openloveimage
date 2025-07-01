@@ -21,6 +21,7 @@ import {
   Paper,
   Tooltip,
   ButtonGroup,
+  TextField,
 } from '@mui/material';
 import {
   Close,
@@ -36,6 +37,8 @@ import {
   RestartAlt,
   Check,
   Cancel,
+  ExpandLess,
+  ExpandMore,
 } from '@mui/icons-material';
 import ReactCrop, { Crop, PixelCrop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
@@ -130,9 +133,117 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
   const [gridType, setGridType] = useState<string>('thirds');
   const [backgroundColor, setBackgroundColor] = useState('#FFFFFF');
   const [backgroundTransparent, setBackgroundTransparent] = useState(false);
+  const [cropSizeMode, setCropSizeMode] = useState<'fit' | 'fill' | 'extend'>('fit');
+  
+  // Resolution settings
+  const [showResolutionInfo, setShowResolutionInfo] = useState(true);
+  const [customResolution, setCustomResolution] = useState(false);
+  const [targetWidth, setTargetWidth] = useState<number | undefined>(undefined);
+  const [targetHeight, setTargetHeight] = useState<number | undefined>(undefined);
+  const [maintainAspectRatio, setMaintainAspectRatio] = useState(true);
+  const [resolutionUpdateKey, setResolutionUpdateKey] = useState(0); // Force re-render key
   
   const imgRef = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const calculateOptimalCrop = useCallback((targetAspectRatio: number, mode: 'fit' | 'fill' | 'extend') => {
+    const img = imgRef.current;
+    if (!img || !img.naturalWidth || !img.naturalHeight) {
+      console.warn('⚠️ Image not ready for crop calculation');
+      return;
+    }
+
+    // Use natural (actual) image dimensions for accurate calculation
+    const naturalWidth = img.naturalWidth;
+    const naturalHeight = img.naturalHeight;
+    const naturalAspectRatio = naturalWidth / naturalHeight;
+
+    console.log(`🚀 Calculating optimal crop with mode: ${mode}`);
+    console.log('🖼️ Image natural dimensions:', { naturalWidth, naturalHeight, naturalAspectRatio });
+    console.log('🎯 Target aspect ratio:', targetAspectRatio);
+
+    let cropWidth: number;
+    let cropHeight: number;
+
+    // Calculate crop dimensions based on the provided size mode
+    if (mode === 'fill') {
+      // Fill - use full longest dimension for maximum resolution
+      const longestSide = Math.max(naturalWidth, naturalHeight);
+      
+      if (targetAspectRatio >= 1) {
+        // Wide/square aspect ratio - use longest side as width
+        cropWidth = longestSide;
+        cropHeight = cropWidth / targetAspectRatio;
+      } else {
+        // Tall aspect ratio - use longest side as height
+        cropHeight = longestSide;
+        cropWidth = cropHeight * targetAspectRatio;
+      }
+      
+      console.log(`🎯 Fill mode: Using longest side ${longestSide} for aspect ${targetAspectRatio}`);
+    } else if (mode === 'extend') {
+      // Extend - crop can be larger than original image
+      const maxDimension = Math.max(naturalWidth, naturalHeight);
+      
+      if (targetAspectRatio >= 1) {
+        // Wide/square aspect ratio - base on width
+        cropWidth = maxDimension * 1.2;
+        cropHeight = cropWidth / targetAspectRatio;
+      } else {
+        // Tall aspect ratio - base on height
+        cropHeight = maxDimension * 1.2;
+        cropWidth = cropHeight * targetAspectRatio;
+      }
+    } else {
+      // Fit (default) - standard crop that fits within image
+      if (naturalAspectRatio > targetAspectRatio) {
+        // Image is wider than target - crop horizontally (keep full height)
+        cropHeight = naturalHeight;
+        cropWidth = cropHeight * targetAspectRatio;
+      } else {
+        // Image is taller than target - crop vertically (keep full width)
+        cropWidth = naturalWidth;
+        cropHeight = cropWidth / targetAspectRatio;
+      }
+    }
+
+    // Center the crop
+    const cropX = (naturalWidth - cropWidth) / 2;
+    const cropY = (naturalHeight - cropHeight) / 2;
+
+    // Convert to percentages for ReactCrop
+    const cropPercentage = {
+      unit: '%' as const,
+      x: (cropX / naturalWidth) * 100,
+      y: (cropY / naturalHeight) * 100,
+      width: (cropWidth / naturalWidth) * 100,
+      height: (cropHeight / naturalHeight) * 100,
+    };
+
+    console.log('✂️ Calculated crop (pixels):', { 
+      cropX: Math.round(cropX), 
+      cropY: Math.round(cropY), 
+      cropWidth: Math.round(cropWidth), 
+      cropHeight: Math.round(cropHeight) 
+    });
+    console.log('📐 Calculated crop (%):', cropPercentage);
+    console.log('🎯 Result aspect ratio:', (cropWidth / cropHeight).toFixed(3));
+
+    // Force update both crop states
+    setCrop(cropPercentage);
+    
+    // Also force completedCrop to ensure resolution calculation works
+    const pixelCrop = {
+      x: cropX,
+      y: cropY,
+      width: cropWidth,
+      height: cropHeight,
+      unit: 'px' as const
+    };
+    setCompletedCrop(pixelCrop);
+    
+    console.log('✅ Crop states updated successfully');
+  }, []); // No dependencies, it's a pure calculation function now
 
   // Load image when file changes
   useEffect(() => {
@@ -140,16 +251,6 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
       const reader = new FileReader();
       reader.onload = () => {
         setImageSrc(reader.result as string);
-        // Reset crop state when new image loads
-        setTimeout(() => {
-          setCrop({
-            unit: '%',
-            x: 10,
-            y: 10,
-            width: 80,
-            height: 80,
-          });
-        }, 100);
       };
       reader.readAsDataURL(imageFile);
     }
@@ -175,16 +276,56 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
       setGridType('thirds');
       setBackgroundColor('#FFFFFF');
       setBackgroundTransparent(false);
+      setCropSizeMode('fit');
+      
+      // Reset resolution settings
+      setShowResolutionInfo(true);
+      setCustomResolution(false);
+      setTargetWidth(undefined);
+      setTargetHeight(undefined);
+      setMaintainAspectRatio(true);
+      setResolutionUpdateKey(0);
+      
+      console.log('🔄 Dialog opened - all settings reset');
     }
   }, [open]);
 
-  const handleAspectRatioChange = (value: number | undefined) => {
-    setAspect(value);
-    setCrop(prevCrop => ({
-      ...prevCrop,
-      aspect: value,
-    }));
+  // Force resolution info update when crop changes
+  useEffect(() => {
+    setResolutionUpdateKey(prev => prev + 1);
+  }, [crop, completedCrop]);
+
+  const recalculateCropForAspectRatio = (aspectRatio: number) => {
+    calculateOptimalCrop(aspectRatio, cropSizeMode);
   };
+  
+  const handleAspectRatioChange = useCallback((value: number | undefined) => {
+    console.log('🔄 Aspect ratio changing to:', value);
+    setAspect(value);
+    
+    if (value && imgRef.current) {
+      // Immediate calculation for responsive UI
+      calculateOptimalCrop(value, cropSizeMode);
+    } else {
+      // Free crop - reset to default
+      console.log('🔄 Setting free crop mode');
+      setCrop({
+        unit: '%', x: 10, y: 10, width: 80, height: 80,
+      });
+      setCompletedCrop(undefined);
+    }
+  }, [calculateOptimalCrop, cropSizeMode]);
+
+  // Update crop size mode and recalculate
+  const handleCropSizeModeChange = useCallback((newMode: 'fit' | 'fill' | 'extend') => {
+    console.log('🔄 Crop size mode changing to:', newMode);
+    setCropSizeMode(newMode);
+    
+    // Recalculate crop with new mode if aspect ratio is set
+    if (aspect && imgRef.current) {
+      calculateOptimalCrop(aspect, newMode);
+    }
+  }, [aspect, calculateOptimalCrop]);
 
   const handleRotationChange = (direction: 'left' | 'right') => {
     const newRotation = direction === 'left' 
@@ -206,6 +347,21 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
   };
 
   const resetSettings = () => {
+    setRotation(0);
+    setScaleX(1);
+    setScaleY(1);
+    setZoom(1);
+    setAspect(undefined);
+    setGridType('thirds');
+    setCropSizeMode('fit');
+    
+    // Reset resolution settings
+    setCustomResolution(false);
+    setTargetWidth(undefined);
+    setTargetHeight(undefined);
+    setMaintainAspectRatio(true);
+    
+    // Reset to default free crop
     setCrop({
       unit: '%',
       x: 10,
@@ -213,39 +369,60 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
       width: 80,
       height: 80,
     });
-    setRotation(0);
-    setScaleX(1);
-    setScaleY(1);
-    setZoom(1);
-    setAspect(undefined);
-    setGridType('thirds');
+    
+    console.log('🔄 Settings reset to default');
   };
 
   const getCroppedImg = useCallback(async (): Promise<Blob | null> => {
-    if (!imgRef.current || !completedCrop || !canvasRef.current) {
-      return null;
-    }
-
     const image = imgRef.current;
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-
-    if (!ctx) {
+    
+    if (!image || !canvas || !completedCrop) {
+      console.error("❌ Cropping failed: Prerequisites not met.", { image, canvas, completedCrop });
       return null;
     }
 
-    const scaleFactorX = image.naturalWidth / image.width;
-    const scaleFactorY = image.naturalHeight / image.height;
+    if (completedCrop.width === 0 || completedCrop.height === 0) {
+      console.error("❌ Cropping failed: Crop dimensions are zero.", { completedCrop });
+      return null;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      console.error("❌ Cropping failed: Could not get 2D context.");
+      return null;
+    }
 
-    // Calculate the actual crop dimensions
-    const cropX = completedCrop.x * scaleFactorX;
-    const cropY = completedCrop.y * scaleFactorY;
-    const cropWidth = completedCrop.width * scaleFactorX;
-    const cropHeight = completedCrop.height * scaleFactorY;
+    // `completedCrop` is already in pixels. We use its values directly.
+    const { x: cropX, y: cropY, width: cropWidth, height: cropHeight } = completedCrop;
 
-    // Set canvas size to crop size
-    canvas.width = cropWidth;
-    canvas.height = cropHeight;
+    // Determine final output dimensions based on custom settings
+    let outputWidth = Math.round(cropWidth);
+    let outputHeight = Math.round(cropHeight);
+
+    if (customResolution && (targetWidth || targetHeight)) {
+      const cropAspectRatio = cropWidth / cropHeight;
+      if (targetWidth && targetHeight) {
+        outputWidth = targetWidth;
+        outputHeight = targetHeight;
+      } else if (targetWidth) {
+        outputWidth = targetWidth;
+        outputHeight = Math.round(targetWidth / cropAspectRatio);
+      } else if (targetHeight) {
+        outputHeight = targetHeight;
+        outputWidth = Math.round(targetHeight * cropAspectRatio);
+      }
+    }
+
+    // Set canvas size to the final output dimensions
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
+
+    console.log('🚀 Preparing to draw on canvas:', {
+      sourceCrop: { cropX, cropY, cropWidth, cropHeight },
+      outputCanvas: { outputWidth, outputHeight },
+      transform: { rotation, scaleX, scaleY }
+    });
 
     // Clear the canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -259,41 +436,45 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
     // Save the context state
     ctx.save();
 
-    // Move to center of canvas
+    // Move to the center of the canvas to apply transformations
     ctx.translate(canvas.width / 2, canvas.height / 2);
-
-    // Apply rotation
     ctx.rotate((rotation * Math.PI) / 180);
-
-    // Apply scale
-    ctx.scale(scaleX * zoom, scaleY * zoom);
-
-    // Draw the image
+    ctx.scale(scaleX, scaleY); // Flipping is handled here. Zoom is for UI only.
+    
+    // Draw the cropped portion of the image onto the canvas
     ctx.drawImage(
       image,
       cropX,
       cropY,
       cropWidth,
       cropHeight,
-      -cropWidth / 2,
-      -cropHeight / 2,
-      cropWidth,
-      cropHeight
+      -canvas.width / 2,   // Center the image horizontally
+      -canvas.height / 2,  // Center the image vertically
+      canvas.width,
+      canvas.height
     );
 
     // Restore the context state
     ctx.restore();
 
-    return new Promise((resolve) => {
+    console.log('✅ Canvas drawing complete. Generating blob...');
+
+    return new Promise((resolve, reject) => {
       canvas.toBlob(
         (blob) => {
-          resolve(blob);
+          if (blob) {
+            console.log('📦 Blob generated successfully:', { size: blob.size, type: blob.type });
+            resolve(blob);
+          } else {
+            console.error('❌ Blob generation failed.');
+            reject(new Error('Canvas to Blob conversion failed'));
+          }
         },
         'image/png',
-        1
+        1 // Quality for PNG
       );
     });
-  }, [completedCrop, rotation, scaleX, scaleY, zoom, backgroundColor, backgroundTransparent]);
+  }, [completedCrop, rotation, scaleX, scaleY, backgroundColor, backgroundTransparent, customResolution, targetWidth, targetHeight]);
 
   const handleConfirm = async () => {
     const croppedImageBlob = await getCroppedImg();
@@ -594,6 +775,76 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
     );
   };
 
+  // Helper function to calculate current crop resolution
+  const getCurrentCropResolution = () => {
+    if (!imgRef.current) {
+      return { width: 0, height: 0, megapixels: 0 };
+    }
+
+    const naturalWidth = imgRef.current.naturalWidth;
+    const naturalHeight = imgRef.current.naturalHeight;
+    
+    // Use completedCrop if available, otherwise fall back to crop state
+    const activeCrop = completedCrop || crop;
+    
+    if (!activeCrop || !activeCrop.width || !activeCrop.height) {
+      return { width: 0, height: 0, megapixels: 0 };
+    }
+
+    let cropWidth: number;
+    let cropHeight: number;
+
+    if (activeCrop.unit === 'px') {
+      // Pixel crop (from completedCrop)
+      cropWidth = Math.round(activeCrop.width);
+      cropHeight = Math.round(activeCrop.height);
+    } else {
+      // Percentage crop (from crop state)
+      cropWidth = Math.round((activeCrop.width / 100) * naturalWidth);
+      cropHeight = Math.round((activeCrop.height / 100) * naturalHeight);
+    }
+    
+    const megapixels = (cropWidth * cropHeight) / 1000000;
+
+    return { 
+      width: cropWidth, 
+      height: cropHeight, 
+      megapixels: Number(megapixels.toFixed(2))
+    };
+  };
+
+  // Helper function to get original image resolution
+  const getOriginalResolution = () => {
+    if (!imgRef.current) {
+      return { width: 0, height: 0, megapixels: 0 };
+    }
+
+    const naturalWidth = imgRef.current.naturalWidth;
+    const naturalHeight = imgRef.current.naturalHeight;
+    const megapixels = (naturalWidth * naturalHeight) / 1000000;
+
+    return { 
+      width: naturalWidth, 
+      height: naturalHeight, 
+      megapixels: Number(megapixels.toFixed(2))
+    };
+  };
+
+  // Handle custom resolution change
+  const handleResolutionChange = (dimension: 'width' | 'height', value: number | undefined) => {
+    if (dimension === 'width') {
+      setTargetWidth(value);
+      if (maintainAspectRatio && value && aspect) {
+        setTargetHeight(Math.round(value / aspect));
+      }
+    } else {
+      setTargetHeight(value);
+      if (maintainAspectRatio && value && aspect) {
+        setTargetWidth(Math.round(value * aspect));
+      }
+    }
+  };
+
   return (
     <>
       <Dialog
@@ -610,7 +861,20 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
       >
         <DialogTitle>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="h6">{title}</Typography>
+            <Box>
+              <Typography variant="h6">{title}</Typography>
+              {imgRef.current && (
+                <Typography variant="caption" color="text.secondary">
+                  📸 {getOriginalResolution().width} × {getOriginalResolution().height} 
+                  {completedCrop && (
+                    <> → ✂️ {getCurrentCropResolution().width} × {getCurrentCropResolution().height}</>
+                  )}
+                  {customResolution && (targetWidth || targetHeight) && (
+                    <> → 🎯 {targetWidth || 'Auto'} × {targetHeight || 'Auto'}</>
+                  )}
+                </Typography>
+              )}
+            </Box>
             <IconButton onClick={onClose} size="small">
               <Close />
             </IconButton>
@@ -641,12 +905,19 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
                   <Box sx={{ position: 'relative' }}>
                     <ReactCrop
                       crop={crop}
-                      onChange={(_, percentCrop) => setCrop(percentCrop)}
-                      onComplete={(c) => setCompletedCrop(c)}
+                      onChange={(_, percentCrop) => {
+                        setCrop(percentCrop);
+                        console.log('📐 Crop area changed:', percentCrop);
+                      }}
+                      onComplete={(c, percentCrop) => {
+                        setCompletedCrop(c);
+                        console.log('✅ Crop completed:', { pixelCrop: c, percentCrop });
+                      }}
                       aspect={aspect}
                       keepSelection
                       minWidth={50}
                       minHeight={50}
+                      ruleOfThirds
                     >
                       <img
                         ref={imgRef}
@@ -659,16 +930,36 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
                           transformOrigin: 'center',
                         }}
                         onLoad={() => {
-                          // Ensure crop is visible after image loads
+                          const img = imgRef.current;
+                          if (!img) return;
+                          
+                          console.log('🖼️ Image loaded with natural dimensions:', {
+                            naturalWidth: img.naturalWidth,
+                            naturalHeight: img.naturalHeight,
+                          });
+                          
+                          // Delay to ensure image is fully rendered before calculating
                           setTimeout(() => {
-                            setCrop(prevCrop => ({
-                              unit: '%',
-                              x: 10,
-                              y: 10,
-                              width: 80,
-                              height: 80,
-                            }));
-                          }, 50);
+                            if (aspect) {
+                              console.log('🎯 onLoad: Auto-calculating crop for aspect ratio:', aspect);
+                              calculateOptimalCrop(aspect, cropSizeMode);
+                            } else {
+                              console.log('🔄 onLoad: Setting default free crop');
+                              const defaultCrop = {
+                                unit: '%' as const, x: 10, y: 10, width: 80, height: 80,
+                              };
+                              setCrop(defaultCrop);
+                              
+                              const pixelCrop = {
+                                unit: 'px' as const,
+                                x: (defaultCrop.x / 100) * img.naturalWidth,
+                                y: (defaultCrop.y / 100) * img.naturalHeight,
+                                width: (defaultCrop.width / 100) * img.naturalWidth,
+                                height: (defaultCrop.height / 100) * img.naturalHeight,
+                              };
+                              setCompletedCrop(pixelCrop);
+                            }
+                          }, 150);
                         }}
                       />
                     </ReactCrop>
@@ -698,6 +989,29 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
                         onClick={() => handleAspectRatioChange(ratio.value)}
                         variant={aspect === ratio.value ? 'filled' : 'outlined'}
                         color={aspect === ratio.value ? 'primary' : 'default'}
+                        size="small"
+                      />
+                    ))}
+                  </Box>
+                </Paper>
+
+                {/* Crop Size Mode */}
+                <Paper sx={{ p: 2, mb: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Crop Size Mode
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {[
+                      { value: 'fit', label: 'Fit', description: 'Within image' },
+                      { value: 'fill', label: 'Fill', description: 'Use longest side' },
+                      { value: 'extend', label: 'Extend', description: 'Beyond frame' },
+                    ].map((mode) => (
+                      <Chip
+                        key={mode.value}
+                        label={`${mode.label} - ${mode.description}`}
+                        onClick={() => handleCropSizeModeChange(mode.value as 'fit' | 'fill' | 'extend')}
+                        variant={cropSizeMode === mode.value ? 'filled' : 'outlined'}
+                        color={cropSizeMode === mode.value ? 'secondary' : 'default'}
                         size="small"
                       />
                     ))}
@@ -870,6 +1184,159 @@ const ImageCropEditor: React.FC<ImageCropEditorProps> = ({
                         ))}
                       </Select>
                     </FormControl>
+                  )}
+                </Paper>
+
+                {/* Resolution Info & Controls */}
+                <Paper sx={{ p: 2, mb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                    <Typography variant="subtitle2">
+                      Resolution
+                    </Typography>
+                    <IconButton 
+                      size="small" 
+                      onClick={() => setShowResolutionInfo(!showResolutionInfo)}
+                    >
+                      {showResolutionInfo ? <ExpandLess /> : <ExpandMore />}
+                    </IconButton>
+                  </Box>
+
+                  {showResolutionInfo && (
+                    <Box>
+                      {/* Original Resolution Info */}
+                      <Box sx={{ mb: 2, p: 1.5, bgcolor: 'rgba(33, 150, 243, 0.1)', borderRadius: 1 }}>
+                        <Typography variant="caption" color="primary" display="block" fontWeight="bold">
+                          📸 Original Image
+                        </Typography>
+                        <Typography variant="body2">
+                          {getOriginalResolution().width} × {getOriginalResolution().height} px
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {getOriginalResolution().megapixels} MP
+                        </Typography>
+                      </Box>
+
+                      {/* Current Crop Resolution */}
+                      <Box sx={{ mb: 2, p: 1.5, bgcolor: 'rgba(76, 175, 80, 0.1)', borderRadius: 1 }}>
+                        <Typography variant="caption" color="success.main" display="block" fontWeight="bold">
+                          ✂️ Current Crop
+                        </Typography>
+                        <Typography variant="body2">
+                          {getCurrentCropResolution().width} × {getCurrentCropResolution().height} px
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {getCurrentCropResolution().megapixels} MP
+                          {completedCrop && (
+                            <> • {Math.round((getCurrentCropResolution().width * getCurrentCropResolution().height) / (getOriginalResolution().width * getOriginalResolution().height) * 100)}% of original</>
+                          )}
+                        </Typography>
+                      </Box>
+
+                      {/* Custom Resolution Controls */}
+                      <FormControlLabel
+                        control={
+                          <Switch
+                            checked={customResolution}
+                            onChange={(e) => setCustomResolution(e.target.checked)}
+                          />
+                        }
+                        label="Custom Output Resolution"
+                        sx={{ mb: 2 }}
+                      />
+
+                      {customResolution && (
+                        <Box>
+                          <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                            <TextField
+                              label="Width"
+                              type="number"
+                              size="small"
+                              value={targetWidth || ''}
+                              onChange={(e) => handleResolutionChange('width', e.target.value ? Number(e.target.value) : undefined)}
+                              sx={{ flex: 1 }}
+                            />
+                            <Box sx={{ display: 'flex', alignItems: 'center', px: 1 }}>
+                              <Typography variant="body2">×</Typography>
+                            </Box>
+                            <TextField
+                              label="Height"
+                              type="number"
+                              size="small"
+                              value={targetHeight || ''}
+                              onChange={(e) => handleResolutionChange('height', e.target.value ? Number(e.target.value) : undefined)}
+                              sx={{ flex: 1 }}
+                            />
+                          </Box>
+
+                          <FormControlLabel
+                            control={
+                              <Switch
+                                checked={maintainAspectRatio}
+                                onChange={(e) => setMaintainAspectRatio(e.target.checked)}
+                              />
+                            }
+                            label="Lock Aspect Ratio"
+                            sx={{ mb: 1 }}
+                          />
+
+                          {/* Quick Resolution Presets */}
+                          <Typography variant="caption" display="block" gutterBottom>
+                            Quick Presets:
+                          </Typography>
+                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                            {[
+                              { label: '1K', width: 1024, height: 1024 },
+                              { label: '2K', width: 2048, height: 2048 },
+                              { label: '4K', width: 4096, height: 4096 },
+                              { label: 'HD', width: 1920, height: 1080 },
+                              { label: '4K Video', width: 3840, height: 2160 },
+                              { label: 'Original', width: getOriginalResolution().width, height: getOriginalResolution().height },
+                            ].map((preset) => (
+                              <Chip
+                                key={preset.label}
+                                label={preset.label}
+                                size="small"
+                                onClick={() => {
+                                  if (aspect) {
+                                    // Calculate based on aspect ratio
+                                    if (aspect >= 1) {
+                                      // Landscape/Square
+                                      setTargetWidth(preset.width);
+                                      setTargetHeight(Math.round(preset.width / aspect));
+                                    } else {
+                                      // Portrait
+                                      setTargetHeight(preset.height);
+                                      setTargetWidth(Math.round(preset.height * aspect));
+                                    }
+                                  } else {
+                                    setTargetWidth(preset.width);
+                                    setTargetHeight(preset.height);
+                                  }
+                                }}
+                                variant="outlined"
+                              />
+                            ))}
+                          </Box>
+
+                          {/* Target Resolution Preview */}
+                          {(targetWidth || targetHeight) && (
+                            <Box sx={{ mt: 2, p: 1.5, bgcolor: 'rgba(156, 39, 176, 0.1)', borderRadius: 1 }}>
+                              <Typography variant="caption" color="secondary.main" display="block" fontWeight="bold">
+                                🎯 Target Output
+                              </Typography>
+                              <Typography variant="body2">
+                                {targetWidth || 'Auto'} × {targetHeight || 'Auto'} px
+                              </Typography>
+                              {targetWidth && targetHeight && (
+                                <Typography variant="caption" color="text.secondary">
+                                  {((targetWidth * targetHeight) / 1000000).toFixed(2)} MP
+                                </Typography>
+                              )}
+                            </Box>
+                          )}
+                        </Box>
+                      )}
+                    </Box>
                   )}
                 </Paper>
 
