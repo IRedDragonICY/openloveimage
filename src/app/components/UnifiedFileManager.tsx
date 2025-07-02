@@ -42,12 +42,13 @@ import {
   Transform,
   Crop,
   Info,
+  Edit,
 } from '@mui/icons-material';
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import ImagePreview from './ImagePreview';
 import BeforeAfterPreview from './BeforeAfterPreview';
-import ImageCropEditor from './ImageCropEditor';
+import ImageEditor from './ImageEditor';
 import ImageMetadataViewer from './ImageMetadataViewer';
 import { heicTo, isHeic } from 'heic-to';
 import { useSettings } from './SettingsContext';
@@ -405,23 +406,23 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
     setCropEditorOpen(true);
   };
 
-  const handleCropConfirm = (croppedImageBlob: Blob, settings: any) => {
+  const handleCropConfirm = (editedImageBlob: Blob, history: any) => {
     if (currentCropFile) {
       // Convert blob to file
-      const croppedFile = new File(
-        [croppedImageBlob],
-        `cropped_${currentCropFile.file.name}`,
-        { type: croppedImageBlob.type }
+      const editedFile = new File(
+        [editedImageBlob],
+        `edited_${currentCropFile.file.name}`,
+        { type: editedImageBlob.type }
       );
       
-      // Store the cropped file
+      // Store the edited file
       setCroppedFiles(prev => ({
         ...prev,
-        [currentCropFile.index]: croppedFile,
+        [currentCropFile.index]: editedFile,
       }));
 
-      // Generate thumbnail for cropped file
-      generateThumbnails([croppedFile]);
+      // Generate thumbnail for edited file
+      generateThumbnails([editedFile]);
     }
     setCropEditorOpen(false);
     setCurrentCropFile(null);
@@ -1338,7 +1339,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
                                 onClick={() => file.originalFile && handleCropClick(file.originalFile, originalIndex)}
                                 color="secondary"
                                 size="small"
-                                title="Crop image"
+                                title="Edit image"
                                 sx={{
                                   bgcolor: croppedFiles[originalIndex] ? 'success.main' : 'secondary.main',
                                   color: croppedFiles[originalIndex] ? 'success.contrastText' : 'secondary.contrastText',
@@ -1347,7 +1348,7 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
                                   }
                                 }}
                               >
-                                <Crop />
+                                <Edit />
                               </IconButton>
                               <IconButton 
                                 onClick={() => handleProcessSingleFile(originalIndex)}
@@ -1579,14 +1580,14 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
         />
       )}
 
-      {/* Image Crop Editor Modal */}
+      {/* Image Editor Modal */}
       {currentCropFile && (
-        <ImageCropEditor
+        <ImageEditor
           open={cropEditorOpen}
           onClose={handleCropClose}
           onConfirm={handleCropConfirm}
           imageFile={currentCropFile.file}
-          title={`Crop ${currentCropFile.file.name}`}
+          title={`Edit ${currentCropFile.file.name}`}
         />
       )}
 

@@ -35,7 +35,7 @@ import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
 import ImagePreview from './ImagePreview';
 import BeforeAfterPreview from './BeforeAfterPreview';
-import ImageCropEditor from './ImageCropEditor';
+import ImageEditor from './ImageEditor';
 import { heicTo, isHeic } from 'heic-to';
 
 export interface ProcessedFile {
@@ -237,23 +237,23 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat, conv
     setCropEditorOpen(true);
   };
 
-  const handleCropConfirm = (croppedImageBlob: Blob, settings: any) => {
+  const handleCropConfirm = (editedImageBlob: Blob, history: any) => {
     if (currentCropFile) {
       // Convert blob to file
-      const croppedFile = new File(
-        [croppedImageBlob],
-        `cropped_${currentCropFile.file.name}`,
-        { type: croppedImageBlob.type }
+      const editedFile = new File(
+        [editedImageBlob],
+        `edited_${currentCropFile.file.name}`,
+        { type: editedImageBlob.type }
       );
       
-      // Store the cropped file
+      // Store the edited file
       setCroppedFiles(prev => ({
         ...prev,
-        [currentCropFile.index]: croppedFile,
+        [currentCropFile.index]: editedFile,
       }));
 
-      // Generate thumbnail for cropped file
-      generateThumbnails([croppedFile]);
+      // Generate thumbnail for edited file
+      generateThumbnails([editedFile]);
     }
     setCropEditorOpen(false);
     setCurrentCropFile(null);
@@ -597,14 +597,14 @@ const FileProcessor = ({ files, onRemoveFile, onProcessFiles, outputFormat, conv
         />
       )}
 
-      {/* Image Crop Editor Modal */}
+      {/* Image Editor Modal */}
       {currentCropFile && (
-        <ImageCropEditor
+        <ImageEditor
           open={cropEditorOpen}
           onClose={handleCropClose}
           onConfirm={handleCropConfirm}
           imageFile={currentCropFile.file}
-          title={`Crop ${currentCropFile.file.name}`}
+          title={`Edit ${currentCropFile.file.name}`}
         />
       )}
     </Card>
