@@ -4,6 +4,8 @@ import {jsPDF} from 'jspdf';
 import toICO from '2ico';
 import JSZip from 'jszip';
 import * as TIFF from 'tiff';
+// @ts-ignore - piexifjs doesn't have perfect TypeScript definitions
+import piexif from 'piexifjs';
 
 // Type declaration for imagetracerjs
 interface ImageTracerModule {
@@ -175,7 +177,8 @@ export class ImageConverter {
 
   private static async convertWithCanvas(
     image: HTMLImageElement,
-    settings: ConversionSettings
+    settings: ConversionSettings,
+    originalFile?: File
   ): Promise<Blob> {
     const { canvas, ctx } = this.getCanvas();
     
@@ -253,15 +256,26 @@ export class ImageConverter {
     }
 
     // Convert to blob for other formats
-    return new Promise((resolve, reject) => {
+    return new Promise(async (resolve, reject) => {
       const mimeType = settings.outputFormat === 'jpeg' ? 'image/jpeg' : 
                       settings.outputFormat === 'png' ? 'image/png' :
                       settings.outputFormat === 'webp' ? 'image/webp' : 'image/jpeg';
       
       canvas.toBlob(
-        (blob) => {
+        async (blob) => {
           if (blob) {
+            // Preserve metadata if not removing it and original file exists
+            if (!settings.removeMetadata && originalFile && (settings.outputFormat === 'jpeg')) {
+              try {
+                const blobWithMetadata = await this.preserveMetadata(blob, originalFile);
+                resolve(blobWithMetadata);
+              } catch (error) {
+                console.warn('Failed to preserve metadata, returning image without metadata:', error);
             resolve(blob);
+              }
+            } else {
+              resolve(blob);
+            }
           } else {
             reject(new Error('Failed to convert image'));
           }
@@ -430,6 +444,29 @@ export class ImageConverter {
       reader.onerror = reject;
       reader.readAsDataURL(blob);
     });
+  }
+
+  private static async preserveMetadata(convertedBlob: Blob, originalFile: File): Promise<Blob> {
+    try {
+      // Extract EXIF data from original file
+      const originalDataUrl = await this.blobToBase64(originalFile);
+      const exifData = piexif.load(originalDataUrl);
+
+      // Convert converted blob to data URL
+      const convertedDataUrl = await this.blobToBase64(convertedBlob);
+
+      // Insert EXIF data into converted image
+      const exifBytes = piexif.dump(exifData);
+      const imageWithExif = piexif.insert(exifBytes, convertedDataUrl);
+
+      // Convert back to blob
+      const response = await fetch(imageWithExif);
+      return await response.blob();
+    } catch (error) {
+      console.warn('Failed to preserve metadata:', error);
+      // Return original blob if metadata preservation fails
+      return convertedBlob;
+    }
   }
 
   private static async convertToIco(
@@ -886,7 +923,7 @@ export class ImageConverter {
       if (settings.maxWidth || settings.maxHeight) {
         const tempFileName = settings.outputFormat === 'jpeg' ? 'temp.jpg' : 'temp.png';
         const img = await this.loadImage(new File([convertedBlob], tempFileName, { type: settings.outputFormat === 'jpeg' ? 'image/jpeg' : 'image/png' }));
-        return await this.convertWithCanvas(img, settings);
+        return await this.convertWithCanvas(img, settings, file);
       }
 
       return convertedBlob;
@@ -1067,7 +1104,7 @@ export class ImageConverter {
       throw new Error(`Failed to load image: ${error instanceof Error ? error.message : error}`);
     }
     
-    return await this.convertWithCanvas(img, settings);
+    return await this.convertWithCanvas(img, settings, file);
   }
 
   static async convertImage(

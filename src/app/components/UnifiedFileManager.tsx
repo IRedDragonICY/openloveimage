@@ -444,6 +444,29 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
     setCurrentMetadataFile(null);
   };
 
+  const handleFileUpdated = (updatedFile: File, originalFileName: string) => {
+    // Update the file in the files array
+    setFiles(prevFiles => 
+      prevFiles.map(file => 
+        file.name === originalFileName ? updatedFile : file
+      )
+    );
+    
+    // Update cropped files if this file was edited
+    const fileIndex = files.findIndex(file => file.name === originalFileName);
+    if (fileIndex !== -1) {
+      setCroppedFiles(prev => ({
+        ...prev,
+        [fileIndex]: updatedFile,
+      }));
+    }
+
+    // Regenerate thumbnail for the updated file
+    generateThumbnails([updatedFile]);
+    
+    console.log('File updated with new metadata:', updatedFile.name);
+  };
+
   // Cancel conversion for a specific file
   const handleCancelConversion = (fileIndex: number) => {
     const abortController = cancellationRequests[fileIndex];
@@ -1597,6 +1620,11 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
         onClose={handleMetadataClose}
         file={currentMetadataFile?.file || null}
         fileName={currentMetadataFile?.fileName || ''}
+        onFileUpdated={(updatedFile) => {
+          if (currentMetadataFile?.fileName) {
+            handleFileUpdated(updatedFile, currentMetadataFile.fileName);
+          }
+        }}
       />
     </Box>
   );
