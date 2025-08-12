@@ -1946,4 +1946,16 @@ export class ImageConverter {
       default: return 1;           // No compression
     }
   }
+
+  static async estimateConvertedSize(
+    file: File,
+    settings: ConversionSettings
+  ): Promise<number> {
+    try {
+      const result = await this.convertImage(file, settings);
+      return result.convertedSize || 0;
+    } catch {
+      return 0;
+    }
+  }
 }

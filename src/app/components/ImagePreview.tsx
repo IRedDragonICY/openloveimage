@@ -125,9 +125,40 @@ const ImagePreview = ({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const handleDownload = () => {
+  const saveBlobWithPicker = async (blob: Blob, suggestedName: string): Promise<boolean> => {
+    try {
+      const anyWindow = window as unknown as { showSaveFilePicker?: Function };
+      if (typeof anyWindow.showSaveFilePicker === 'function') {
+        try {
+          const ext = suggestedName.includes('.')
+            ? suggestedName.slice(suggestedName.lastIndexOf('.'))
+            : '';
+          const handle: any = await anyWindow.showSaveFilePicker!({
+            suggestedName,
+            types: [
+              { description: 'Image', accept: { [blob.type || 'application/octet-stream']: [ext || ''] } },
+            ],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          return true;
+        } catch (err: any) {
+          if (err && (err.name === 'AbortError' || /aborted/i.test(err.message || ''))) {
+            return false;
+          }
+        }
+      }
+    } catch (_) {
+      // ignore
+    }
+    saveAs(blob, suggestedName);
+    return true;
+  };
+
+  const handleDownload = async () => {
     if (file && fileName) {
-      saveAs(file, fileName);
+      await saveBlobWithPicker(file, fileName);
     }
   };
 

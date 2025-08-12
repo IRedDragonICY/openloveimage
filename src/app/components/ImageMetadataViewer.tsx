@@ -1236,7 +1236,7 @@ const ImageMetadataViewer: React.FC<MetadataViewerProps> = ({
     }
   };
 
-  const exportMetadata = (format: 'txt' | 'json' | 'csv' | 'html') => {
+  const exportMetadata = async (format: 'txt' | 'json' | 'csv' | 'html') => {
     if (!metadata) return;
 
     const groups = organizeMetadata();
@@ -1352,8 +1352,34 @@ const ImageMetadataViewer: React.FC<MetadataViewerProps> = ({
     }
 
     const blob = new Blob([content], { type: mimeType });
-    saveAs(blob, `${baseFileName}_comprehensive_metadata_${timestamp}.${extension}`);
-    setExportMenuAnchor(null);
+    try {
+      const anyWindow = window as unknown as { showSaveFilePicker?: Function };
+      const suggestedName = `${baseFileName}_comprehensive_metadata_${timestamp}.${extension}`;
+      if (typeof anyWindow.showSaveFilePicker === 'function') {
+        try {
+          const handle: any = await anyWindow.showSaveFilePicker!({
+            suggestedName,
+            types: [
+              { description: 'Report', accept: { [mimeType]: [`.${extension}`] } },
+            ],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+        } catch (err: any) {
+          if (err && (err.name === 'AbortError' || /aborted/i.test(err.message || ''))) {
+            setExportMenuAnchor(null);
+            return; // cancelled – do not fallback
+          }
+          // Fallback to download below
+          saveAs(blob, suggestedName);
+        }
+      } else {
+        saveAs(blob, suggestedName);
+      }
+    } finally {
+      setExportMenuAnchor(null);
+    }
   };
 
   const handleExportClick = (event: React.MouseEvent<HTMLElement>) => {

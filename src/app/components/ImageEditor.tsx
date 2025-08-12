@@ -625,7 +625,6 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
     if (activeTool === 'crop') {
       console.log('🔄 Switching to crop tool - preparing crop mode');
       
-      // Ensure canvas and image data are ready
       const canvas = canvasRef.current;
       if (canvas && canvas.width > 0 && canvas.height > 0) {
         console.log('🎨 Canvas available and ready, updating image data');
@@ -633,14 +632,8 @@ const ImageEditor: React.FC<ImageEditorProps> = ({
         updateCanvasImageData();
       } else if (originalImage) {
         console.log('🖼️ Canvas not ready, initializing with original image');
-        setTimeout(() => {
-          initializeCanvas(originalImage);
-          // Update canvas image data after initialization
-          setTimeout(() => {
-            updateCanvasImageData();
-            console.log('✅ Canvas initialized and image data updated for crop mode');
-          }, 150);
-        }, 100);
+        initializeCanvas(originalImage);
+        updateCanvasImageData();
       } else {
         console.log('⚠️ No canvas or original image available yet');
       }

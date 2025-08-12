@@ -43,6 +43,7 @@ import {
   Crop,
   Info,
   Edit,
+  Tune,
 } from '@mui/icons-material';
 import { saveAs } from 'file-saver';
 import JSZip from 'jszip';
@@ -52,6 +53,7 @@ import ImageEditor from './ImageEditor';
 import ImageMetadataViewer from './ImageMetadataViewer';
 import { heicTo, isHeic } from 'heic-to';
 import { useSettings } from './SettingsContext';
+import { ImageConverter } from '../utils/imageConverter';
 
 // Helper function to get actual file type including HEIC
 const getActualFileType = (file: File): string => {
@@ -142,6 +144,9 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
   // Cancellation states
   const [cancellationRequests, setCancellationRequests] = useState<{ [key: number]: AbortController }>({});
   const [cancellingFiles, setCancellingFiles] = useState<{ [key: number]: boolean }>({});
+
+  // Add state for predicted sizes
+  const [predictedSizes, setPredictedSizes] = useState<{ [key: number]: number }>({});
 
   // Simulate upload progress for each file with realistic speeds and ETA
   const simulateUploadProgress = useCallback(async (file: File, fileIndex: number) => {
@@ -329,6 +334,20 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
     setProcessedFiles(newProcessedFiles);
   }, [files, outputFormat]);
 
+  // Effect to calculate predictions when processedFiles or conversionSettings change
+  useEffect(() => {
+    processedFiles.forEach((file, index) => {
+      if (file.status === 'pending') {
+        const targetFile = croppedFiles[index] || files[index];
+        if (targetFile) {
+          ImageConverter.estimateConvertedSize(targetFile, conversionSettings).then(size => {
+            setPredictedSizes(prev => ({ ...prev, [index]: size }));
+          });
+        }
+      }
+    });
+  }, [processedFiles, conversionSettings, croppedFiles, files]);
+
   // File management functions
   const removeFile = useCallback((index: number) => {
     const fileToRemove = files[index];
@@ -408,20 +427,26 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
 
   const handleCropConfirm = (editedImageBlob: Blob, history: any) => {
     if (currentCropFile) {
-      // Convert blob to file
       const editedFile = new File(
         [editedImageBlob],
         `edited_${currentCropFile.file.name}`,
         { type: editedImageBlob.type }
       );
       
-      // Store the edited file
       setCroppedFiles(prev => ({
         ...prev,
         [currentCropFile.index]: editedFile,
       }));
 
-      // Generate thumbnail for edited file
+      // Update processedFiles with new size
+      setProcessedFiles(prev => 
+        prev.map((file, index) => 
+          index === currentCropFile.index 
+            ? { ...file, originalSize: editedFile.size }
+            : file
+        )
+      );
+
       generateThumbnails([editedFile]);
     }
     setCropEditorOpen(false);
@@ -577,6 +602,24 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
             throw new Error('No conversion result received');
           }
           
+          // If user cancelled, preserve cancelled state and skip applying result
+          if (abortController.signal.aborted || cancellingFiles[fileIndex]) {
+            setProcessedFiles(prev =>
+              prev.map((file, index) =>
+                index === fileIndex
+                  ? {
+                      ...file,
+                      status: 'cancelled' as const,
+                      isCancelling: false,
+                      error: 'Conversion cancelled by user',
+                      conversionProgress: 100,
+                    }
+                  : file
+              )
+            );
+            continue;
+          }
+
           // Update this specific file with success result
           setProcessedFiles(prev => 
             prev.map((file, index) => {
@@ -701,6 +744,24 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
         throw new Error('No conversion results received');
       }
       
+      // If user cancelled, preserve cancelled state and skip applying result
+      if (abortController.signal.aborted || cancellingFiles[fileIndex]) {
+        setProcessedFiles(prev =>
+          prev.map((file, index) =>
+            index === fileIndex
+              ? {
+                  ...file,
+                  status: 'cancelled' as const,
+                  isCancelling: false,
+                  error: 'Conversion cancelled by user',
+                  conversionProgress: 100,
+                }
+              : file
+          )
+        );
+        return;
+      }
+
       // Update only this specific file
       setProcessedFiles(prev => 
         prev.map((file, index) => {
@@ -797,30 +858,111 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
     return originalFileName.replace(/\.[^/.]+$/, '') + '.' + fileExtension;
   };
 
-  const downloadSingleFile = (processedFile: ProcessedFile) => {
+  // Best-effort save helper: prefers File System Access API (cancellable), falls back to file-saver
+  const saveBlobWithPicker = async (blob: Blob, suggestedName: string): Promise<boolean> => {
+    try {
+      const anyWindow = window as unknown as { showSaveFilePicker?: Function };
+      if (typeof anyWindow.showSaveFilePicker === 'function') {
+        try {
+          const ext = suggestedName.includes('.')
+            ? suggestedName.slice(suggestedName.lastIndexOf('.'))
+            : '';
+          const handle: any = await anyWindow.showSaveFilePicker!({
+            suggestedName,
+            types: [
+              {
+                description: 'File',
+                accept: { [blob.type || 'application/octet-stream']: [ext || ''] },
+              },
+            ],
+          });
+          const writable = await handle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          return true;
+        } catch (err: any) {
+          // If user cancels the picker, do nothing
+          if (err && (err.name === 'AbortError' || /aborted/i.test(err.message || ''))) {
+            return false;
+          }
+          // Non-cancellation errors will fall through to fallback
+        }
+      }
+    } catch (_) {
+      // Env without window or access to picker – ignore and fallback
+    }
+    // Fallback: triggers browser download dialog (cannot detect cancel)
+    saveAs(blob, suggestedName);
+    return true;
+  };
+
+  const downloadSingleFile = async (processedFile: ProcessedFile) => {
     if (!processedFile.convertedBlob || !processedFile.originalFile) return;
 
     const fileName = generateOutputFileName(processedFile.originalFile.name, processedFile.outputFormat);
-    
-    saveAs(processedFile.convertedBlob, fileName);
+    await saveBlobWithPicker(processedFile.convertedBlob, fileName);
   };
 
   const downloadAllAsZip = async () => {
-    const completedFiles = processedFiles.filter(file => file.status === 'completed' && file.convertedBlob);
-    
+    const completedFiles = processedFiles.filter(
+      (file) => file.status === 'completed' && file.convertedBlob
+    );
+
     if (completedFiles.length === 0) return;
 
+    const suggestedZipName = `converted-images-${new Date().getTime()}.zip`;
+
+    // Try asking for the save location first so user cancel truly stops the export
+    let fileHandle: any | null = null;
+    let usingPicker = false;
+    try {
+      const anyWindow = window as unknown as { showSaveFilePicker?: Function };
+      if (typeof anyWindow.showSaveFilePicker === 'function') {
+        try {
+          fileHandle = await anyWindow.showSaveFilePicker!({
+            suggestedName: suggestedZipName,
+            types: [
+              {
+                description: 'ZIP Archive',
+                accept: { 'application/zip': ['.zip'] },
+              },
+            ],
+          });
+          usingPicker = !!fileHandle;
+        } catch (err: any) {
+          if (err && (err.name === 'AbortError' || /aborted/i.test(err.message || ''))) {
+            // User cancelled save dialog – abort before we generate the ZIP
+            return;
+          }
+          // Fall back to default download flow
+        }
+      }
+    } catch (_) {
+      // Non-browser env – continue to fallback below
+    }
+
+    // Build ZIP (after user has confirmed location when possible)
     const zip = new JSZip();
-    
     completedFiles.forEach((file) => {
       if (file.convertedBlob && file.originalFile && file.originalFile.name) {
-        const fileName = generateOutputFileName(file.originalFile.name, file.outputFormat);
+        const fileName = generateOutputFileName(
+          file.originalFile.name,
+          file.outputFormat
+        );
         zip.file(fileName, file.convertedBlob);
       }
     });
 
     const zipBlob = await zip.generateAsync({ type: 'blob' });
-    saveAs(zipBlob, `converted-images-${new Date().getTime()}.zip`);
+
+    if (usingPicker && fileHandle) {
+      const writable = await fileHandle.createWritable();
+      await writable.write(zipBlob);
+      await writable.close();
+    } else {
+      // Fallback to normal download dialog
+      saveAs(zipBlob, suggestedZipName);
+    }
   };
 
   // Helper functions
@@ -1215,6 +1357,22 @@ const UnifiedFileManager = ({ onProcessFiles, outputFormat, conversionSettings }
                         }
                         secondary={
                           <Box sx={{ mt: 0.5 }}>
+                            {file.status === 'pending' && predictedSizes[originalIndex] > 0 && (
+                              <Chip
+                                icon={<Tune fontSize="small" />}
+                                label={`Predicted: ${formatFileSize(predictedSizes[originalIndex])}`}
+                                size="small"
+                                variant="outlined"
+                                color="primary"
+                                sx={{
+                                  mb: 1,
+                                  borderRadius: '16px',
+                                  backgroundColor: 'primary.main',
+                                  color: 'primary.contrastText',
+                                  '& .MuiChip-icon': { color: 'inherit' },
+                                }}
+                              />
+                            )}
                             <Typography variant="body2" component="span" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
                               {formatFileSize(file.originalSize)}
                               {file.convertedSize && (

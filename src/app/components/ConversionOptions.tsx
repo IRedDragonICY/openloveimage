@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Card,
   CardContent,
@@ -20,6 +20,7 @@ import {
   Alert,
 } from '@mui/material';
 import { Settings, Tune, Crop } from '@mui/icons-material';
+import { ImageConverter } from '../utils/imageConverter';
 
 export interface ConversionSettings {
   outputFormat: string;
@@ -148,6 +149,18 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
     });
   };
 
+  // Add state for predicted size
+  const [predictedSize, setPredictedSize] = useState<number>(0);
+
+  // Effect to estimate size when settings change
+  useEffect(() => {
+    // For demonstration, assume we have a sample file; in real app, use actual file
+    const sampleFile = new File([], 'sample.jpg'); // Replace with actual file
+    ImageConverter.estimateConvertedSize(sampleFile, settings).then(size => {
+      setPredictedSize(size);
+    });
+  }, [settings]);
+
   return (
     <Card sx={{ mb: 3 }}>
       <CardContent>
@@ -190,37 +203,45 @@ const ConversionOptions = ({ settings, onSettingsChange }: ConversionOptionsProp
             {supportsQuality && (
               <Box sx={{ flex: 1 }}>
                 <Typography gutterBottom>
-                  {isSvg ? 'Vectorization Quality' : isPdf ? 'Image Quality in PDF' : 'Quality'}: {settings.quality}%
+                  {isSvg ? 'Vectorization Quality' : isPdf ? 'Image Quality in PDF' : 'Quality'}
                 </Typography>
-                <Box sx={{ px: 2 }}>
-                  <Slider
-                    value={settings.quality}
-                    onChange={(_, value) => handleChange('quality', value)}
-                    min={10}
-                    max={100}
-                    step={5}
-                    marks={
-                      isSvg ? [
-                        { value: 25, label: 'Fast' },
-                        { value: 50, label: 'Balanced' },
-                        { value: 75, label: 'Detailed' },
-                        { value: 100, label: 'Maximum' },
-                      ] : isPdf ? [
-                        { value: 25, label: 'Small' },
-                        { value: 50, label: 'Balanced' },
-                        { value: 75, label: 'High' },
-                        { value: 100, label: 'Print' },
-                      ] : [
-                        { value: 25, label: 'Low' },
-                        { value: 50, label: 'Medium' },
-                        { value: 75, label: 'High' },
-                        { value: 100, label: 'Best' },
-                      ]
+                <TextField
+                  fullWidth
+                  variant="outlined"
+                  type="text"  // Change to text for easier editing
+                  value={settings.quality.toString()}
+                  onChange={(e) => {
+                    const valueStr = e.target.value;
+                    if (valueStr === '') {
+                      handleChange('quality', 0);
+                      return;
                     }
-                    sx={sliderStyles}
-                  />
-                </Box>
+                    const value = parseFloat(valueStr);
+                    if (!isNaN(value) && value >= 0 && value <= 100) {
+                      handleChange('quality', value);
+                    }
+                  }}
+                  InputProps={{
+                    endAdornment: <Typography sx={{ color: 'text.secondary' }}>%</Typography>,
+                  }}
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: '12px',
+                      backgroundColor: 'background.paper',
+                    },
+                  }}
+                  helperText="Enter quality (0-100, supports decimals like 95.8252)"
+                />
               </Box>
+            )}
+
+            {supportsQuality && predictedSize > 0 && (
+              <Chip 
+                label={`Predicted Size: ${(predictedSize / 1024).toFixed(2)} KB`} 
+                color="info" 
+                variant="outlined"
+                sx={{ mt: 1, borderRadius: '16px' }}
+              />
             )}
 
                               {/* PNG Compression Level */}
